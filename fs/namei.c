@@ -3268,7 +3268,7 @@ SYSCALL_DEFINE5(renameat2, int, olddfd, const char __user *, oldname,
 	char *to;
 	int error;
 
-	if (flags)
+	if (flags & ~RENAME_NOREPLACE)
 		return -EINVAL;
 
 	error = user_path_parent(olddfd, oldname, &oldnd, &from);
@@ -3289,6 +3289,8 @@ SYSCALL_DEFINE5(renameat2, int, olddfd, const char __user *, oldname,
 		goto exit2;
 
 	new_dir = newnd.path.dentry;
+	if (flags & RENAME_NOREPLACE)
+		error = -EEXIST;
 	if (newnd.last_type != LAST_NORM)
 		goto exit2;
 
@@ -3325,6 +3327,9 @@ SYSCALL_DEFINE5(renameat2, int, olddfd, const char __user *, oldname,
 	/* target should not be an ancestor of source */
 	error = -ENOTEMPTY;
 	if (new_dentry == trap)
+		goto exit5;
+	error = -EEXIST;
+	if ((flags & RENAME_NOREPLACE) && !d_is_negative(new_dentry))
 		goto exit5;
 
 	error = mnt_want_write(oldnd.path.mnt);
