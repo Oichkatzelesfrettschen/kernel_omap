@@ -39,6 +39,7 @@ snd-soc-igep0020-objs := igep0020.o
 snd-soc-bowser-wolfson-objs := bowser-wolfson.o
 snd-soc-bowser-maxim-objs := bowser-maxim.o
 snd-soc-omap-hdmi-card-objs := omap-hdmi-card.o
+snd-soc-tuna-objs := tuna.o
 
 obj-$(CONFIG_SND_OMAP_SOC_N810) += snd-soc-n810.o
 obj-$(CONFIG_SND_OMAP_SOC_RX51) += snd-soc-rx51.o
@@ -58,3 +59,4 @@ obj-$(CONFIG_SND_OMAP_SOC_IGEP0020) += snd-soc-igep0020.o
 obj-$(CONFIG_SND_OMAP_SOC_BOWSER_WOLFSON) += snd-soc-bowser-wolfson.o
 obj-$(CONFIG_SND_OMAP_SOC_BOWSER_MAXIM) += snd-soc-bowser-maxim.o
 obj-$(CONFIG_SND_OMAP_SOC_OMAP_HDMI) += snd-soc-omap-hdmi-card.o
+obj-$(CONFIG_SND_OMAP_SOC_TUNA) += snd-soc-tuna.o
