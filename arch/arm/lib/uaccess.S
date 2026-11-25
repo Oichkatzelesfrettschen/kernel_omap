@@ -81,11 +81,11 @@ USER(	TUSER(	str)	r3, [r0], #4)			@ May fault
 		bpl	.Lc2u_0cpy8lp
 
 .Lc2u_0rem8lp:	cmn	ip, #16
-		ldmgeia	r1!, {r3 - r6}
-		stmgeia	r0!, {r3 - r6}			@ Shouldnt fault
+		ldmiage	r1!, {r3 - r6}
+		stmiage	r0!, {r3 - r6}			@ Shouldnt fault
 		tst	ip, #8
-		ldmneia	r1!, {r3 - r4}
-		stmneia	r0!, {r3 - r4}			@ Shouldnt fault
+		ldmiane	r1!, {r3 - r4}
+		stmiane	r0!, {r3 - r4}			@ Shouldnt fault
 		tst	ip, #4
 		ldrne	r3, [r1], #4
 	TUSER(	strne) r3, [r0], #4			@ Shouldnt fault
@@ -146,11 +146,11 @@ USER(	TUSER(	str)	r3, [r0], #4)			@ May fault
 
 .Lc2u_1rem8lp:	tst	ip, #8
 		movne	r3, r7, pull #8
-		ldmneia	r1!, {r4, r7}
+		ldmiane	r1!, {r4, r7}
 		orrne	r3, r3, r4, push #24
 		movne	r4, r4, pull #8
 		orrne	r4, r4, r7, push #24
-		stmneia	r0!, {r3 - r4}			@ Shouldnt fault
+		stmiane	r0!, {r3 - r4}			@ Shouldnt fault
 		tst	ip, #4
 		movne	r3, r7, pull #8
 		ldrne	r7, [r1], #4
@@ -201,11 +201,11 @@ USER(	TUSER(	str)	r3, [r0], #4)			@ May fault
 
 .Lc2u_2rem8lp:	tst	ip, #8
 		movne	r3, r7, pull #16
-		ldmneia	r1!, {r4, r7}
+		ldmiane	r1!, {r4, r7}
 		orrne	r3, r3, r4, push #16
 		movne	r4, r4, pull #16
 		orrne	r4, r4, r7, push #16
-		stmneia	r0!, {r3 - r4}			@ Shouldnt fault
+		stmiane	r0!, {r3 - r4}			@ Shouldnt fault
 		tst	ip, #4
 		movne	r3, r7, pull #16
 		ldrne	r7, [r1], #4
@@ -256,11 +256,11 @@ USER(	TUSER(	str)	r3, [r0], #4)			@ May fault
 
 .Lc2u_3rem8lp:	tst	ip, #8
 		movne	r3, r7, pull #24
-		ldmneia	r1!, {r4, r7}
+		ldmiane	r1!, {r4, r7}
 		orrne	r3, r3, r4, push #8
 		movne	r4, r4, pull #24
 		orrne	r4, r4, r7, push #8
-		stmneia	r0!, {r3 - r4}			@ Shouldnt fault
+		stmiane	r0!, {r3 - r4}			@ Shouldnt fault
 		tst	ip, #4
 		movne	r3, r7, pull #24
 		ldrne	r7, [r1], #4
@@ -345,11 +345,11 @@ USER(	TUSER(	ldr)	r3, [r1], #4)
 		bpl	.Lcfu_0cpy8lp
 
 .Lcfu_0rem8lp:	cmn	ip, #16
-		ldmgeia	r1!, {r3 - r6}			@ Shouldnt fault
-		stmgeia	r0!, {r3 - r6}
+		ldmiage	r1!, {r3 - r6}			@ Shouldnt fault
+		stmiage	r0!, {r3 - r6}
 		tst	ip, #8
-		ldmneia	r1!, {r3 - r4}			@ Shouldnt fault
-		stmneia	r0!, {r3 - r4}
+		ldmiane	r1!, {r3 - r4}			@ Shouldnt fault
+		stmiane	r0!, {r3 - r4}
 		tst	ip, #4
 	TUSER(	ldrne) r3, [r1], #4			@ Shouldnt fault
 		strne	r3, [r0], #4
@@ -411,11 +411,11 @@ USER(	TUSER(	ldr)	r7, [r1], #4)			@ May fault
 
 .Lcfu_1rem8lp:	tst	ip, #8
 		movne	r3, r7, pull #8
-		ldmneia	r1!, {r4, r7}			@ Shouldnt fault
+		ldmiane	r1!, {r4, r7}			@ Shouldnt fault
 		orrne	r3, r3, r4, push #24
 		movne	r4, r4, pull #8
 		orrne	r4, r4, r7, push #24
-		stmneia	r0!, {r3 - r4}
+		stmiane	r0!, {r3 - r4}
 		tst	ip, #4
 		movne	r3, r7, pull #8
 USER(	TUSER(	ldrne) r7, [r1], #4)			@ May fault
@@ -467,11 +467,11 @@ USER(	TUSER(	ldr)	r7, [r1], #4)			@ May fault
 
 .Lcfu_2rem8lp:	tst	ip, #8
 		movne	r3, r7, pull #16
-		ldmneia	r1!, {r4, r7}			@ Shouldnt fault
+		ldmiane	r1!, {r4, r7}			@ Shouldnt fault
 		orrne	r3, r3, r4, push #16
 		movne	r4, r4, pull #16
 		orrne	r4, r4, r7, push #16
-		stmneia	r0!, {r3 - r4}
+		stmiane	r0!, {r3 - r4}
 		tst	ip, #4
 		movne	r3, r7, pull #16
 USER(	TUSER(	ldrne) r7, [r1], #4)			@ May fault
@@ -522,11 +522,11 @@ USER(	TUSER(	ldr)	r7, [r1], #4)			@ May fault
 
 .Lcfu_3rem8lp:	tst	ip, #8
 		movne	r3, r7, pull #24
-		ldmneia	r1!, {r4, r7}			@ Shouldnt fault
+		ldmiane	r1!, {r4, r7}			@ Shouldnt fault
 		orrne	r3, r3, r4, push #8
 		movne	r4, r4, pull #24
 		orrne	r4, r4, r7, push #8
-		stmneia	r0!, {r3 - r4}
+		stmiane	r0!, {r3 - r4}
 		tst	ip, #4
 		movne	r3, r7, pull #24
 USER(	TUSER(	ldrne) r7, [r1], #4)			@ May fault

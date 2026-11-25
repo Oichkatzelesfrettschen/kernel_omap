@@ -856,7 +856,7 @@ __kuser_cmpxchg64:				@ 0xffff0f60
 1:	ldmia	r2, {r0, r1}			@ load current val
 	eors	r3, r0, r4			@ compare with oldval (1)
 	eorseq	r3, r1, r5			@ compare with oldval (2)
-2:	stmeqia	r2, {r6, lr}			@ store newval if eq
+2:	stmiaeq	r2, {r6, lr}			@ store newval if eq
 	rsbs	r0, r3, #0			@ set return val and C flag
 	ldmfd	sp!, {r4, r5, r6, pc}
 
