@@ -343,6 +343,8 @@ obj-$(CONFIG_MACH_TUNA)			+= board-tuna.o \
 					   omap_phy_internal.o \
 					   hsmmc.o
 
+obj-$(CONFIG_SEC_MODEM)			+= board-tuna-modems.o
+
 obj-$(CONFIG_MACH_PCM049)		+= board-omap4pcm049.o
 
 obj-$(CONFIG_MACH_OMAP3517EVM)		+= board-am3517evm.o
