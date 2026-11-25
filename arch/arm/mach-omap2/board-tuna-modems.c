@@ -22,6 +22,10 @@
 
 #include <linux/platform_data/modem.h>
 #include "board-tuna.h"
+
+/* The GPMC register window stays mapped: the DPRAM link reconfigures it. */
+static void __iomem *gpmc_regs;
+#define OMAP4_GPMC_IO_ADDRESS(pa)	(gpmc_regs + ((pa) - OMAP44XX_GPMC_BASE))
 #include "mux.h"
 
 #define OMAP_GPIO_MIPI_HSI_CP_ON	53
@@ -351,7 +355,6 @@ static struct modem_data cdma_modem_data = {
 static void dpram_cfg_gpio(void)
 {
 	int nRetry = 0;
-	void __iomem *gpmc_dpram;
 	int resetdone;
 
 	omap_mux_init_signal("gpmc_ad0", OMAP_PULL_ENA|OMAP_PULL_UP|OMAP_INPUT_EN);
@@ -387,11 +390,11 @@ static void dpram_cfg_gpio(void)
 				IRQ_TYPE_LEVEL_LOW);
 
 	/*dpram platform init setting*/
-	gpmc_dpram = ioremap(OMAP44XX_GPMC_BASE + 0x10, 4);
-	if (gpmc_dpram) {
-		__raw_writel(0x02, gpmc_dpram);
-		iounmap(gpmc_dpram);
-	}
+	if (!gpmc_regs)
+		gpmc_regs = ioremap(OMAP44XX_GPMC_BASE, SZ_4K);
+	if (!gpmc_regs)
+		return;
+	__raw_writel(0x02, OMAP4_GPMC_IO_ADDRESS(OMAP44XX_GPMC_BASE + 0x10));
 
 	while (nRetry < 100) {
 		msleep(20);
