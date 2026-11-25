@@ -63,6 +63,8 @@
 
 #include <linux/atomic.h>
 
+static struct file_system_type compat_cgroup2_fs_type;
+
 /*
  * cgroup_mutex is the master lock.  Any modification to cgroup or its
  * hierarchy must be performed while holding it.
@@ -1510,12 +1512,22 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 	struct cgroupfs_root *new_root;
 	struct inode *inode;
 
-	/* First find the desired set of subsystems */
-	mutex_lock(&cgroup_mutex);
-	ret = parse_cgroupfs_options(data, &opts);
-	mutex_unlock(&cgroup_mutex);
-	if (ret)
-		goto out_err;
+	/*
+	 * A cgroup2 mount carries no subsystem options: it is a hierarchy
+	 * with no subsystems attached, so its directories hold tasks and
+	 * nothing else.
+	 */
+	if (fs_type == &compat_cgroup2_fs_type) {
+		memset(&opts, 0, sizeof(opts));
+		opts.none = true;
+	} else {
+		/* First find the desired set of subsystems */
+		mutex_lock(&cgroup_mutex);
+		ret = parse_cgroupfs_options(data, &opts);
+		mutex_unlock(&cgroup_mutex);
+		if (ret)
+			goto out_err;
+	}
 
 	/*
 	 * Allocate a new cgroup root. We may not need it if we're
@@ -1694,6 +1706,12 @@ static void cgroup_kill_sb(struct super_block *sb) {
 	kill_litter_super(sb);
 	cgroup_drop_root(root);
 }
+
+static struct file_system_type compat_cgroup2_fs_type = {
+	.name = "cgroup2",
+	.mount = cgroup_mount,
+	.kill_sb = cgroup_kill_sb,
+};
 
 static struct file_system_type cgroup_fs_type = {
 	.name = "cgroup",
@@ -4405,6 +4423,13 @@ int __init cgroup_init(void)
 
 	err = register_filesystem(&cgroup_fs_type);
 	if (err < 0) {
+		kobject_put(cgroup_kobj);
+		goto out;
+	}
+
+	err = register_filesystem(&compat_cgroup2_fs_type);
+	if (err < 0) {
+		unregister_filesystem(&cgroup_fs_type);
 		kobject_put(cgroup_kobj);
 		goto out;
 	}
