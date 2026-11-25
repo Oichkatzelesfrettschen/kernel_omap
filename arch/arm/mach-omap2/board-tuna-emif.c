@@ -17,7 +17,7 @@
 #include "common-board-devices.h"
 #include "board-tuna.h"
 
-static struct __devinitdata emif_custom_configs custom_configs = {
+static struct emif_custom_configs custom_configs __devinitdata = {
 	.mask	= EMIF_CUSTOM_CONFIG_LPMODE,
 	.lpmode	= EMIF_LP_MODE_SELF_REFRESH,
 	.lpmode_timeout_performance = 512,
