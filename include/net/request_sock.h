@@ -53,9 +53,15 @@ struct request_sock_ops {
  */
 struct request_sock {
 	struct request_sock		*dl_next; /* Must be first member! */
+#ifdef CONFIG_NET_NS
 	unsigned char                   filler[offsetof(struct sock_common, skc_net)-sizeof(void*)];
 	struct net	 	       *skc_net;
 	atomic64_t		        skc_cookie;
+#else
+	unsigned char                   filler[offsetof(struct sock_common, skc_cookie)-sizeof(void*)];
+	atomic64_t		        skc_cookie;
+	struct net	 	       *skc_net;
+#endif
 	u16				mss;
 	u8				retrans;
 	u8				cookie_ts; /* syncookie: encode tcpopts in timestamp */
