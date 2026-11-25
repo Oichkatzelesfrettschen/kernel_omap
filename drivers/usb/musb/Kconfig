@@ -33,6 +33,7 @@ config USB_MUSB_HDRC
 if USB_MUSB_HDRC
 
 choice
+	bool
 	prompt "Platform Glue Layer"
 
 config USB_MUSB_DAVINCI
