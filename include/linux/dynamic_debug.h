@@ -1,8 +1,6 @@
 #ifndef _DYNAMIC_DEBUG_H
 #define _DYNAMIC_DEBUG_H
 
-#include <linux/string.h>
-
 /*
  * An instance of this structure is created in a special
  * ELF section at every dynamic debug callsite.  At runtime,
@@ -106,6 +104,9 @@ static inline int ddebug_remove_module(const char *mod)
 {
 	return 0;
 }
+
+/* string.h is still being included when this header is reached. */
+extern char *strstr(const char *, const char *);
 
 static inline int ddebug_dyndbg_module_param_cb(char *param, char *val,
 						const char *modname)
