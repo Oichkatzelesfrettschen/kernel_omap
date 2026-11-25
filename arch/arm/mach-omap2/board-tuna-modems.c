@@ -20,7 +20,6 @@
 #include <linux/err.h>
 #include <linux/delay.h>
 
-#include <mach/omap4-common.h>
 #include <linux/platform_data/modem.h>
 #include "board-tuna.h"
 #include "mux.h"
