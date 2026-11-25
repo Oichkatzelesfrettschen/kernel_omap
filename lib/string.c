@@ -103,6 +103,7 @@ char *strcpy(char *dest, const char *src)
 	return tmp;
 }
 EXPORT_SYMBOL(strcpy);
+
 #endif
 
 #ifndef __HAVE_ARCH_STRNCPY
@@ -824,3 +825,21 @@ void *memchr_inv(const void *start, int c, size_t bytes)
 	return check_bytes8(start, value, bytes % 8);
 }
 EXPORT_SYMBOL(memchr_inv);
+
+/*
+ * Clang lowers some strcpy(), sprintf("%s") and memcmp()==0 patterns to
+ * stpcpy() and bcmp(), which libgcc-based kernels never provided.
+ */
+char *stpcpy(char *__restrict__ dest, const char *__restrict__ src)
+{
+	while ((*dest = *src++) != '\0')
+		dest++;
+	return dest;
+}
+EXPORT_SYMBOL(stpcpy);
+
+int bcmp(const void *cs, const void *ct, size_t count)
+{
+	return memcmp(cs, ct, count);
+}
+EXPORT_SYMBOL(bcmp);
