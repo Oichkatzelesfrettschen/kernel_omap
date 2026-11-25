@@ -34,6 +34,9 @@ obj-$(CONFIG_SMP)			+= omap-smp.o omap-headsmp.o
 obj-$(CONFIG_HOTPLUG_CPU)		+= omap-hotplug.o
 
 plus_sec := $(call as-instr,.arch_extension sec,+sec)
+ifeq ($(LLVM_IAS),1)
+plus_sec :=
+endif
 AFLAGS_omap-headsmp.o			:=-Wa,-march=armv7-a$(plus_sec)
 AFLAGS_omap-smc.o			:=-Wa,-march=armv7-a$(plus_sec)
 AFLAGS_sleep4xxx_5xxx.o			:=-Wa,-march=armv7-a$(plus_sec)

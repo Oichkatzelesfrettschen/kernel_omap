@@ -19,6 +19,10 @@
 
 #include <linux/linkage.h>
 
+#ifdef __clang__
+	.arch_extension sec
+#endif
+
 #define SMICODEPUB_IRQ_END   0xFE
 #define SMICODEPUB_FIQ_END   0xFD
 #define SMICODEPUB_RPC_END   0xFC

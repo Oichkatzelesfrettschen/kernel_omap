@@ -24,6 +24,10 @@
  */
 #include <linux/linkage.h>
 
+#ifdef __clang__
+	.arch_extension sec
+#endif
+
 #include <asm/assembler.h>
 
 #include <plat/hardware.h>

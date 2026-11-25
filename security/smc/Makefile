@@ -40,6 +40,9 @@ tf_driver-objs += bridge_pub2sec.o
 tf_driver-objs += tf_teec.o
 
 plus_sec := $(call as-instr,.arch_extension sec,+sec)
+ifeq ($(LLVM_IAS),1)
+plus_sec :=
+endif
 AFLAGS_bridge_pub2sec.o := -Wa,-march=armv7-a$(plus_sec)
 
 ifeq ($(CONFIG_SMC_KERNEL_CRYPTO),y)
