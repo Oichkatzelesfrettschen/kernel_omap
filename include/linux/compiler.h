@@ -310,4 +310,6 @@ void ftrace_likely_update(struct ftrace_branch_data *f, int val, int expect);
  */
 #define ACCESS_ONCE(x) (*(volatile typeof(x) *)&(x))
 
+#define WRITE_ONCE(x, val) (ACCESS_ONCE(x) = (val))
+
 #endif /* __LINUX_COMPILER_H */
