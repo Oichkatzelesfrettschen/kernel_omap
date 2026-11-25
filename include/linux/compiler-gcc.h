@@ -107,6 +107,11 @@
  * A trick to suppress uninitialized variable warning without generating any
  * code
  */
+#ifdef __clang__
+/* Clang diagnoses x = x as use of an uninitialized variable. */
+#define uninitialized_var(x) x = *(&(x))
+#else
 #define uninitialized_var(x) x = x
+#endif
 
 #define __always_inline		inline __attribute__((always_inline))
