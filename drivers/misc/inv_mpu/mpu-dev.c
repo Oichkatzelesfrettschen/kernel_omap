@@ -47,7 +47,7 @@
 #include "slaveirq.h"
 #include "mlsl.h"
 #include "mldl_cfg.h"
-#include <linux/inv_mpu.h>
+#include <linux/mpu.h>
 
 
 /* Platform data for the MPU */
@@ -84,7 +84,6 @@ static int mpu_pm_notifier_callback(struct notifier_block *nb,
 	struct mpu_private_data *mpu =
 	    container_of(nb, struct mpu_private_data, nb);
 	struct i2c_client *client = mpu->client;
-	struct timeval event_time;
 	dev_dbg(&client->adapter->dev, "%s: %ld\n", __func__, event);
 
 	/* Prevent the file handle from being closed before we initialize
@@ -96,17 +95,15 @@ static int mpu_pm_notifier_callback(struct notifier_block *nb,
 		return NOTIFY_OK;
 	}
 
-	do_gettimeofday(&event_time);
-	mpu->mpu_pm_event.interruptcount++;
-	mpu->mpu_pm_event.irqtime =
-	    (((long long)event_time.tv_sec) << 32) + event_time.tv_usec;
-	mpu->mpu_pm_event.data_type = MPUIRQ_DATA_TYPE_PM_EVENT;
-	mpu->mpu_pm_event.data = mpu->event;
-
 	if (event == PM_SUSPEND_PREPARE)
 		mpu->event = MPU_PM_EVENT_SUSPEND_PREPARE;
 	if (event == PM_POST_SUSPEND)
 		mpu->event = MPU_PM_EVENT_POST_SUSPEND;
+
+	mpu->mpu_pm_event.irqtime = ktime_to_ns(ktime_get_boottime());
+	mpu->mpu_pm_event.interruptcount++;
+	mpu->mpu_pm_event.data_type = MPUIRQ_DATA_TYPE_PM_EVENT;
+	mpu->mpu_pm_event.data = mpu->event;
 
 	if (mpu->response_timeout > 0) {
 		mpu->timeout.expires = jiffies + mpu->response_timeout * HZ;
@@ -211,7 +208,7 @@ static ssize_t mpu_read(struct file *file,
 		wait_event_interruptible(mpu->mpu_event_wait, mpu->event);
 
 	if (!mpu->event || !buf
-	    || count < sizeof(mpu->mpu_pm_event) + sizeof(unsigned long))
+	    || count < sizeof(mpu->mpu_pm_event))
 		return 0;
 
 	err = copy_to_user(buf, &mpu->mpu_pm_event, sizeof(mpu->mpu_pm_event));
@@ -1221,6 +1218,7 @@ int mpu_probe(struct i2c_client *client, const struct i2c_device_id *devid)
 	inv_mpu_close(&mpu->mldl_cfg, client->adapter,
 		      accel_adapter, compass_adapter, pressure_adapter);
  out_whoami_failed:
+	unregister_pm_notifier(&mpu->nb);
 	kfree(mpu);
 	mpu_private_data = NULL;
  out_alloc_data_failed:
@@ -1266,6 +1264,7 @@ static int mpu_remove(struct i2c_client *client)
 		pdata->accel.get_slave_descr = NULL;
 	}
 
+	unregister_pm_notifier(&mpu->nb);
 	misc_deregister(&mpu->dev);
 	kfree(mpu);
 

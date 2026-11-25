@@ -38,7 +38,7 @@
 #include <linux/timer.h>
 #include <linux/slab.h>
 
-#include <linux/inv_mpu.h>
+#include <linux/mpu.h>
 #include "mltypes.h"
 #include "timerirq.h"
 
@@ -61,15 +61,12 @@ static struct miscdevice *timerirq_dev_data;
 static void timerirq_handler(unsigned long arg)
 {
 	struct timerirq_data *data = (struct timerirq_data *)arg;
-	struct timeval irqtime;
 
 	data->data.interruptcount++;
 
 	data->data_ready = 1;
 
-	do_gettimeofday(&irqtime);
-	data->data.irqtime = (((long long)irqtime.tv_sec) << 32);
-	data->data.irqtime += irqtime.tv_usec;
+	data->data.irqtime = ktime_to_ns(ktime_get_boottime());
 	data->data.data_type |= 1;
 
 	dev_dbg(data->dev->this_device,

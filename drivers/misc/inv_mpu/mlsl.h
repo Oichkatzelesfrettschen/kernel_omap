@@ -53,7 +53,7 @@
  */
 
 #include "mltypes.h"
-#include <linux/inv_mpu.h>
+#include <linux/mpu.h>
 
 
 /*
