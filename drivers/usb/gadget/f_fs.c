@@ -1459,11 +1459,9 @@ static int ffs_sb_fill(struct super_block *sb, void *_data, int silent)
 				  &data->perms);
 	if (unlikely(!inode))
 		goto Enomem;
-	sb->s_root = d_alloc_root(inode);
-	if (unlikely(!sb->s_root)) {
-		iput(inode);
+	sb->s_root = d_make_root(inode);
+	if (unlikely(!sb->s_root))
 		goto Enomem;
-	}
 
 	/* EP0 file */
 	if (unlikely(!ffs_sb_create_file(sb, "ep0", ffs,
@@ -1941,7 +1939,8 @@ static int ffs_func_eps_enable(struct ffs_function *func)
 		}
 
 		ep->ep->driver_data = ep;
-		ret = usb_ep_enable(ep->ep, ds);
+		ep->ep->desc = ds;
+		ret = usb_ep_enable(ep->ep);
 		if (likely(!ret)) {
 			epfile->ep = ep;
 			epfile->in = usb_endpoint_dir_in(ds);
