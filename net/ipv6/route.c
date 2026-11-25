@@ -620,7 +620,7 @@ int rt6_route_rcv(struct net_device *dev, u8 *opt, int len,
 		rt = rt6_get_dflt_router(gwaddr, dev);
 	else
 		rt = rt6_get_route_info(dev, prefix, rinfo->prefix_len,
-					gwaddr, dev->ifindex);
+					gwaddr);
 
 	if (rt && !lifetime) {
 		ip6_del_rt(rt);
