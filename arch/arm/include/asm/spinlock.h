@@ -6,6 +6,7 @@
 #endif
 
 #include <asm/processor.h>
+#include <asm/unified.h>
 
 /*
  * sev and wfe are ARMv6K extensions.  Uniprocessor ARMv6 may not have the K
@@ -210,7 +211,7 @@ static inline void arch_read_lock(arch_rwlock_t *rw)
 "	adds	%0, %0, #1\n"
 "	strexpl	%1, %0, [%2]\n"
 	WFE("mi")
-"	rsbpls	%0, %1, #0\n"
+"	rsbspl	%0, %1, #0\n"
 "	bmi	1b"
 	: "=&r" (tmp), "=&r" (tmp2)
 	: "r" (&rw->lock)

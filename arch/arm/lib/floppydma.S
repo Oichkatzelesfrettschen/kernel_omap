@@ -26,7 +26,7 @@ ENTRY(floppy_fiqout_start)
 		ldrgeb	r12, [r10], #1
 		movlt	r12, #0
 		strleb	r12, [r11], #0
-		subles	pc, lr, #4
+		subsle	pc, lr, #4
 		strb	r12, [r11, #-4]
 		subs	pc, lr, #4
 floppy_fiqout_end:
