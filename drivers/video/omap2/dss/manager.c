@@ -47,18 +47,18 @@ static ssize_t manager_display_show(struct omap_overlay_manager *mgr, char *buf)
 			mgr->device ? mgr->device->name : "<none>");
 }
 
+static int match(struct omap_dss_device *dssdev, void *data)
+{
+	const char *str = data;
+	return sysfs_streq(dssdev->name, str);
+}
+
 static ssize_t manager_display_store(struct omap_overlay_manager *mgr,
 		const char *buf, size_t size)
 {
 	int r = 0;
 	size_t len = size;
 	struct omap_dss_device *dssdev = NULL;
-
-	int match(struct omap_dss_device *dssdev, void *data)
-	{
-		const char *str = data;
-		return sysfs_streq(dssdev->name, str);
-	}
 
 	if (buf[size-1] == '\n')
 		--len;

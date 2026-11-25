@@ -4027,13 +4027,13 @@ static void dispc_error_worker(struct work_struct *work)
 	dispc_runtime_put();
 }
 
+static void dispc_irq_wait_handler(void *data, u32 mask)
+{
+	complete((struct completion *)data);
+}
+
 int omap_dispc_wait_for_irq_timeout(u32 irqmask, unsigned long timeout)
 {
-	void dispc_irq_wait_handler(void *data, u32 mask)
-	{
-		complete((struct completion *)data);
-	}
-
 	int r;
 	DECLARE_COMPLETION_ONSTACK(completion);
 
@@ -4060,11 +4060,6 @@ int omap_dispc_wait_for_irq_timeout(u32 irqmask, unsigned long timeout)
 int omap_dispc_wait_for_irq_interruptible_timeout(u32 irqmask,
 		unsigned long timeout)
 {
-	void dispc_irq_wait_handler(void *data, u32 mask)
-	{
-		complete((struct completion *)data);
-	}
-
 	int r;
 	DECLARE_COMPLETION_ONSTACK(completion);
 

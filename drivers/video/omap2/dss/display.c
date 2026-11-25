@@ -600,6 +600,11 @@ void omap_dss_put_device(struct omap_dss_device *dssdev)
 }
 EXPORT_SYMBOL(omap_dss_put_device);
 
+static int match(struct device *dev, void *data)
+{
+	return 1;
+}
+
 /* ref count of the found device is incremented. ref count
  * of from-device is decremented. */
 struct omap_dss_device *omap_dss_get_next_device(struct omap_dss_device *from)
@@ -607,11 +612,6 @@ struct omap_dss_device *omap_dss_get_next_device(struct omap_dss_device *from)
 	struct device *dev;
 	struct device *dev_start = NULL;
 	struct omap_dss_device *dssdev = NULL;
-
-	int match(struct device *dev, void *data)
-	{
-		return 1;
-	}
 
 	if (from)
 		dev_start = &from->dev;
