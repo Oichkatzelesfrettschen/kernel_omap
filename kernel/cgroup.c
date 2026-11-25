@@ -5378,7 +5378,8 @@ void cgroup_sk_alloc(struct cgroup **skcg)
 	list_for_each_entry(link, &cg->cg_links, cg_link_list) {
 		struct cgroup *cgrp = link->cgrp;
 
-		if (!test_bit(ROOT_CGROUP2, &cgrp->root->flags))
+		if (!cgrp->root->sb ||
+		    cgrp->root->sb->s_type != &compat_cgroup2_fs_type)
 			continue;
 		if (cgroup_tryget(cgrp))
 			*skcg = cgrp;
