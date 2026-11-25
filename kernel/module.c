@@ -3096,6 +3096,12 @@ static int may_init_module(void)
 
 /* Allocate and load the module: note that size of section 0 is always
    zero, and we rely on this for optional sections. */
+/* parse_args() passes two arguments; dyndbg wants the name for its log line. */
+static int module_unknown_param(char *param, char *val)
+{
+	return ddebug_dyndbg_module_param_cb(param, val, "module");
+}
+
 static int load_module(struct load_info *info, const char __user *uargs,
 		       int flags)
 {
@@ -3201,7 +3207,7 @@ again:
 
 	/* Module is ready to execute: parsing args may do that. */
 	err = parse_args(mod->name, mod->args, mod->kp, mod->num_kp,
-			 -32768, 32767, &ddebug_dyndbg_module_param_cb);
+			 -32768, 32767, &module_unknown_param);
 	if (err < 0)
 		goto unlink;
 
