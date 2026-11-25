@@ -23,6 +23,14 @@
 #include <asm/hwcap.h>
 #include <asm/opcodes.h>
 
+#ifdef CONFIG_DEBUG_RODATA
+#include <asm/rodata.h>
+#else
+/* set_memory_ro and set_memory_rw exist only with CONFIG_DEBUG_RODATA. */
+static inline int set_memory_ro(unsigned long virt, int numpages) { return 0; }
+static inline int set_memory_rw(unsigned long virt, int numpages) { return 0; }
+#endif
+
 #include "bpf_jit_32.h"
 
 #define STACK_OFFSET(k)	(k)
