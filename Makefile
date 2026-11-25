@@ -648,6 +648,7 @@ KBUILD_CFLAGS	+= $(call cc-disable-warning, address-of-packed-member)
 KBUILD_CFLAGS	+= $(call cc-disable-warning, format-invalid-specifier)
 KBUILD_CFLAGS	+= $(call cc-disable-warning, gnu)
 KBUILD_CFLAGS	+= $(call cc-disable-warning, initializer-overrides)
+KBUILD_CFLAGS	+= $(call cc-disable-warning, expansion-to-defined)
 KBUILD_CFLAGS	+= $(call cc-disable-warning, unused-const-variable)
 KBUILD_CFLAGS	+= $(call cc-disable-warning, tautological-constant-out-of-range-compare)
 
