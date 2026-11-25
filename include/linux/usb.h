@@ -538,6 +538,7 @@ extern int usb_lock_device_for_reset(struct usb_device *udev,
 /* USB port reset for device reinitialization */
 extern int usb_reset_device(struct usb_device *dev);
 extern void usb_queue_reset_device(struct usb_interface *dev);
+extern void usb_force_disconnect(struct usb_device *udev);
 
 
 /* USB autosuspend and autoresume */
