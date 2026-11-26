@@ -244,8 +244,16 @@ static int mmc_read_ssr(struct mmc_card *card)
 	 * bitfield positions accordingly.
 	 */
 	au = UNSTUFF_BITS(ssr, 428 - 384, 4);
-	if (au > 0 && au <= 9) {
-		card->ssr.au = 1 << (au + 4);
+	if (au && (au <= 9 || card->scr.sda_spec3)) {
+		/*
+		 * AU size in 512-byte sectors. Codes 1-10 are 16 KiB << (au - 1);
+		 * SD 3.0 adds 11-15 = 12, 16, 24, 32 and 64 MiB.
+		 */
+		static const unsigned int au_spec3[] = {
+			24576, 32768, 49152, 65536, 131072,
+		};
+
+		card->ssr.au = au <= 10 ? 1 << (au + 4) : au_spec3[au - 11];
 		es = UNSTUFF_BITS(ssr, 408 - 384, 16);
 		et = UNSTUFF_BITS(ssr, 402 - 384, 6);
 		eo = UNSTUFF_BITS(ssr, 400 - 384, 2);
