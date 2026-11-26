@@ -76,7 +76,7 @@ PHONY += allnoconfig allyesconfig allmodconfig alldefconfig randconfig
 allnoconfig allyesconfig allmodconfig alldefconfig randconfig: $(obj)/conf
 	$< --$@ $(Kconfig)
 
-PHONY += listnewconfig oldnoconfig savedefconfig defconfig
+PHONY += listnewconfig olddefconfig oldnoconfig savedefconfig defconfig
 
 ifneq ($(VARIANT_DEFCONFIG),)
 export KCONFIG_VARIANT := arch/$(SRCARCH)/configs/$(VARIANT_DEFCONFIG)
@@ -94,7 +94,9 @@ ifneq ($(SELINUX_LOG_DEFCONFIG),)
 export KCONFIG_LOG_SELINUX := arch/$(SRCARCH)/configs/$(SELINUX_LOG_DEFCONFIG)
 endif
 
-listnewconfig oldnoconfig: $(obj)/conf
+# olddefconfig is the later name of oldnoconfig, which takes the default
+# value of every new symbol despite its name.
+listnewconfig olddefconfig oldnoconfig: $(obj)/conf
 	$< --$@ $(Kconfig)
 
 savedefconfig: $(obj)/conf
