@@ -529,31 +529,27 @@ void __init omap_vram_reserve_sdram_memblock(void)
 
 	size = ALIGN(size, SZ_2M);
 
+	/* An unusable fixed start falls back to a dynamic region. */
 	if (paddr) {
 		if (paddr & ~PAGE_MASK) {
 			pr_err("VRAM start address 0x%08x not page aligned\n",
 					paddr);
-			return;
-		}
-
-		if (!memblock_is_region_memory(paddr, size)) {
+			paddr = 0;
+		} else if (!memblock_is_region_memory(paddr, size)) {
 			pr_err("Illegal SDRAM region 0x%08x..0x%08x for VRAM\n",
 					paddr, paddr + size - 1);
-			return;
-		}
-
-		if (memblock_is_region_reserved(paddr, size)) {
+			paddr = 0;
+		} else if (memblock_is_region_reserved(paddr, size)) {
 			pr_err("FB: failed to reserve VRAM - busy\n");
-			return;
-		}
-
-		if (memblock_reserve(paddr, size) < 0) {
+			paddr = 0;
+		} else if (memblock_reserve(paddr, size) < 0) {
 			pr_err("FB: failed to reserve VRAM - no memory\n");
-			return;
+			paddr = 0;
 		}
-	} else {
-		paddr = memblock_alloc(size, SZ_2M);
 	}
+
+	if (!paddr)
+		paddr = memblock_alloc(size, SZ_2M);
 
 	memblock_free(paddr, size);
 	memblock_remove(paddr, size);

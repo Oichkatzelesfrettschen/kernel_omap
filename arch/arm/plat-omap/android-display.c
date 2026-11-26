@@ -26,6 +26,17 @@
 #include <plat/dsscomp.h>
 #include <plat/vram.h>
 
+#ifdef CONFIG_MACH_TUNA
+/*
+ * The bootloader scans a framebuffer at lcd_bootfb (0xbea70000, 3.5 MiB)
+ * until the display driver takes over. VRAM placed over it keeps that
+ * range out of the page allocator, so the panel shows the boot logo and
+ * not reused memory. The 2 MiB-aligned region 0xbea00000..0xbf200000
+ * covers the buffer.
+ */
+#define TUNA_VRAM_START 0xbea00000
+#endif
+
 struct omap_android_display_data {
 	/* members with default values */
 	u32 width;
@@ -206,8 +217,14 @@ int __init omap_android_display_setup(struct omap_dss_board_info *dss,
 		if (!fb->mem_desc.region[i].paddr)
 			omapfb_vram += fb->mem_desc.region[i].size;
 
+#ifdef CONFIG_MACH_TUNA
+	pr_info("android_display: setting vram to %u at address 0x%x\n",
+		omapfb_vram, TUNA_VRAM_START);
+	omap_vram_set_sdram_vram(omapfb_vram, TUNA_VRAM_START);
+#else
 	pr_info("android_display: setting vram to %u\n", omapfb_vram);
 	omap_vram_set_sdram_vram(omapfb_vram, 0);
+#endif
 
 	return 0;
 }
