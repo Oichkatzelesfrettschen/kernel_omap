@@ -15,6 +15,7 @@
 #include <linux/omap_cpufreq_cap.h>
 #include <linux/pm.h>
 #include <linux/slab.h>
+#include <linux/stat.h>
 #include <linux/suspend.h>
 #include <linux/sysfs.h>
 #include <linux/workqueue.h>
