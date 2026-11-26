@@ -140,22 +140,27 @@ static long tf_ctrl_device_ioctl(struct file *file, unsigned int ioctl_num,
 
 	switch (pa_ctrl.nPACommand) {
 	case TF_PA_CTRL_START: {
+#ifndef CONFIG_MACH_TUNA
 		struct tf_shmem_desc *shmem_desc = NULL;
 		u32 shared_mem_descriptors[TF_MAX_COARSE_PAGES] = {0};
 		u32 descriptor_count;
 		u32 offset;
 		struct tf_connection *connection;
+#endif
 
 		dpr_info("%s(%p): Start the SMC PA (%d bytes, conf %d bytes)\n",
 			__func__, file, pa_ctrl.pa_size, pa_ctrl.conf_size);
 
+#ifndef CONFIG_MACH_TUNA
 		connection = tf_conn_from_file(file);
+#endif
 
 		if (dev->workspace_addr == 0) {
 			result = -ENOMEM;
 			goto start_exit;
 		}
 
+#ifndef CONFIG_MACH_TUNA
 #ifdef SUPPORT_LARGE_PHYSICAL_ADDRESS_EXTENSION
 		if (!cpu_is_omap54xx())
 #endif
@@ -188,14 +193,19 @@ static long tf_ctrl_device_ioctl(struct file *file, unsigned int ioctl_num,
 				goto start_exit;
 			}
 		}
+#endif
 
 		result = tf_start(&dev->sm,
 			dev->workspace_addr,
 			dev->workspace_size,
 			pa_ctrl.pa_buffer,
 			pa_ctrl.pa_size,
+#ifdef CONFIG_MACH_TUNA
+			pa_ctrl.conf_buffer,
+#else
 			shared_mem_descriptors[0],
 			offset,
+#endif
 			pa_ctrl.conf_size);
 		if (result)
 			dpr_err("SMC: start failed\n");
@@ -203,7 +213,9 @@ static long tf_ctrl_device_ioctl(struct file *file, unsigned int ioctl_num,
 			dpr_info("SMC: started\n");
 
 start_exit:
+#ifndef CONFIG_MACH_TUNA
 		tf_unmap_shmem(connection, shmem_desc, true); /* full cleanup */
+#endif
 		break;
 	}
 
