@@ -988,8 +988,7 @@ int tf_open_client_session(
 				"TF_LOGIN_PRIVILEGED for kernel API\n");
 		} else if (
 #ifdef CONFIG_MACH_TUNA
-				!in_group_p(make_kgid(current_user_ns(),
-					TF_TUNA_DRMRPC_GID)) &&
+				!in_group_p(TF_TUNA_DRMRPC_GID) &&
 #endif
 				(current_euid() != TF_PRIVILEGED_UID_GID) &&
 				(current_egid() != TF_PRIVILEGED_UID_GID) &&
