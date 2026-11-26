@@ -356,6 +356,7 @@ int dsi_vc_send_null(struct omap_dss_device *dssdev, int channel);
 int dsi_vc_send_bta_sync(struct omap_dss_device *dssdev, int channel);
 int dsi_enable_video_output(struct omap_dss_device *dssdev, int channel);
 void dsi_disable_video_output(struct omap_dss_device *dssdev, int channel);
+int dsi_restart_video_output(struct omap_dss_device *dssdev, int channel);
 void dsi_videomode_panel_preinit(struct omap_dss_device *dssdev);
 #ifdef CONFIG_MACH_OMAP4_BOWSER
 int dsi_vc_gen_write_nosync_sclk(struct omap_dss_device *dssdev, int channel,

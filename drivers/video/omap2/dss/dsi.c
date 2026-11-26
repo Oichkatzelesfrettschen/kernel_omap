@@ -4424,6 +4424,9 @@ int dsi_enable_video_output(struct omap_dss_device *dssdev, int channel)
 
 		dsi_vc_enable(dsidev, channel, true);
 		dsi_if_enable(dsidev, true);
+
+		/* the DSI engine settles before the first DISPC frame */
+		msleep(2);
 	}
 
 	dsi_handle_lcd_en_timing_pre(dssdev, true);
@@ -4437,9 +4440,21 @@ int dsi_enable_video_output(struct omap_dss_device *dssdev, int channel)
 		return r;
 	}
 	dsi_handle_lcd_en_timing_post(dssdev, true);
+
+	if (dssdev->panel.dsi_mode == OMAP_DSS_DSI_VIDEO_MODE)
+		msleep(2);
 	return 0;
 }
 EXPORT_SYMBOL(dsi_enable_video_output);
+
+/* A running DISPC output is stopped first so the DSI interface sees frame 0. */
+int dsi_restart_video_output(struct omap_dss_device *dssdev, int channel)
+{
+	dispc_mgr_enable(dssdev->manager->id, false);
+
+	return dsi_enable_video_output(dssdev, channel);
+}
+EXPORT_SYMBOL(dsi_restart_video_output);
 
 void dsi_disable_video_output(struct omap_dss_device *dssdev, int channel)
 {

@@ -1777,17 +1777,20 @@ static int s6e8aa0_enable(struct omap_dss_device *dssdev)
 	} else {
 		dssdev->state = OMAP_DSS_DISPLAY_ACTIVE;
 		/*
-		 * A bootloader-initialized panel skips dsi_enable_video_output(),
-		 * the only caller of dss_mgr_enable() on this path. Without it
-		 * apply.c never writes the overlay registers, and DISPC keeps
-		 * scanning the bootloader buffer.
+		 * apply.c has not written the overlay registers, and the
+		 * bootloader stream runs at an arbitrary frame phase against the
+		 * DSI video engine; the restart makes DISPC frame 0 follow the
+		 * DSI interface enable.
 		 */
 		if (handoff) {
-			int r = dss_mgr_enable(dssdev->manager);
+			int r;
 
+			dsi_bus_lock(dssdev);
+			r = dsi_restart_video_output(dssdev, s6->channel0);
+			dsi_bus_unlock(dssdev);
 			if (r)
 				dev_warn(&dssdev->dev,
-					 "manager enable after handoff failed: %d\n", r);
+					 "video restart after handoff failed: %d\n", r);
 		}
 	}
 
