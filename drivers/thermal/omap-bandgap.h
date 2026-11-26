@@ -289,7 +289,7 @@ extern struct omap_bandgap_data omap5430_data;
 #define omap5430_data					NULL
 #endif
 
-#ifdef CONFIG_OMAP_DIE_TEMP_SENSOR
+#if defined(CONFIG_OMAP_DIE_TEMP_SENSOR) || defined(CONFIG_OMAP_THERMAL_LADDER)
 int omap_thermal_expose_sensor(struct omap_bandgap *bg_ptr, int id,
 					char *domain);
 int omap_thermal_report_temperature(struct omap_bandgap *bg_ptr, int id);

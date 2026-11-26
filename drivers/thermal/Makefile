@@ -12,3 +12,4 @@ else
 obj-$(CONFIG_OMAP5_BG_TEMP_SENSOR_DATA)	+= omap5-bg-sen-data.o
 endif
 omap-thermal-y			:= omap-bandgap.o
+omap-thermal-$(CONFIG_OMAP_THERMAL_LADDER)	+= omap-thermal-ladder.o

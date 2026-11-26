@@ -53,6 +53,16 @@ config OMAP4_BG_TEMP_SENSOR_DATA
 	  This includes alert interrupts generation and also the TSHUT
 	  support.
 
+config OMAP_THERMAL_LADDER
+	bool "OMAP4460 die temperature ladder"
+	depends on OMAP_BANDGAP && ARM_OMAP2PLUS_CPUFREQ
+	depends on !OMAP_DIE_TEMP_SENSOR
+	help
+	  Exposes the bandgap die temperature in sysfs and caps the MPU
+	  frequency in steps as the die temperature rises, with the hot
+	  and cold alerts of the bandgap marking each step. It replaces
+	  the thermal framework sensor and governor.
+
 config OMAP5_BG_TEMP_SENSOR_DATA
 	bool "Texas Instruments OMAP5 thermal support"
 	depends on OMAP_BANDGAP
