@@ -4827,10 +4827,15 @@ static int dsi_display_init_dsi(struct omap_dss_device *dssdev)
 	if (1)
 		_dsi_print_reset_status(dsidev);
 
+	/*
+	 * The protocol setup sizes the virtual-channel TX FIFOs; a display the
+	 * bootloader left running still needs them before any long DCS write.
+	 */
+	r = dsi_proto_config(dssdev);
+	if (r)
+		goto err3;
+
 	if (!dssdev->skip_init) {
-	        r = dsi_proto_config(dssdev);
-		if (r)
-			goto err3;
 		/* enable interface */
 		dsi_vc_enable(dsidev, 0, 1);
 		dsi_vc_enable(dsidev, 1, 1);
