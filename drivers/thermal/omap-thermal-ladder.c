@@ -45,6 +45,8 @@ static const struct omap_thermal_level ladder[] = {
 #define LADDER_TOP		((int)ARRAY_SIZE(ladder) - 1)
 #define LADDER_DWELL_MS		2000
 #define LADDER_FIRST_EVAL_MS	1000
+#define LADDER_VERIFY_FIRST_MS	2000
+#define LADDER_VERIFY_LAST_MS	128000
 
 struct omap_ladder {
 	struct omap_bandgap *bg_ptr;
@@ -56,6 +58,8 @@ struct omap_ladder {
 	unsigned long level_jiffies;
 	bool enabled;
 	bool reprogram_next;
+	unsigned int verify_ms;
+	struct delayed_work verify_work;
 	struct notifier_block pm_notifier;
 };
 
@@ -129,6 +133,7 @@ static void ladder_evaluate(struct omap_ladder *l, int force, bool reprogram)
 	mutex_lock(&l->lock);
 	if (!l->enabled)
 		goto out;
+	omap_bandgap_tshut_verify(l->bg_ptr, l->id, "ladder evaluation");
 	if (l->reprogram_next) {
 		reprogram = true;
 		l->reprogram_next = false;
@@ -182,6 +187,23 @@ static void ladder_dwell_fn(struct work_struct *work)
 					     dwell_work.work);
 
 	ladder_evaluate(l, 0, false);
+}
+
+/*
+ * Checks the TSHUT window at doubling intervals after probe, so the log
+ * dates the first change of the register.
+ */
+static void ladder_verify_fn(struct work_struct *work)
+{
+	struct omap_ladder *l = container_of(work, struct omap_ladder,
+					     verify_work.work);
+
+	omap_bandgap_tshut_verify(l->bg_ptr, l->id, "boot check");
+	if (l->verify_ms < LADDER_VERIFY_LAST_MS) {
+		l->verify_ms *= 2;
+		schedule_delayed_work(&l->verify_work,
+				      msecs_to_jiffies(l->verify_ms));
+	}
 }
 
 static struct omap_ladder *ladder_of(struct device *dev)
@@ -288,11 +310,29 @@ static ssize_t tshut_show(struct device *dev, struct device_attribute *attr,
 	return sprintf(buf, "%d %d %d\n", hot, cold, bg_ptr->tshut_gpio);
 }
 
+/* Programmed TSHUT register value against the last value read. */
+static ssize_t tshut_state_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct omap_ladder *l = ladder_of(dev);
+	struct omap_temp_sensor *s;
+
+	if (!l)
+		return -ENODEV;
+	omap_bandgap_tshut_verify(l->bg_ptr, l->id, "sysfs read");
+	s = &l->bg_ptr->conf->sensors[l->id];
+
+	return sprintf(buf, "programmed 0x%08x seen 0x%08x fixups %u refused %d\n",
+		       s->tshut_expected, s->tshut_seen, s->tshut_fixups,
+		       s->tshut_refused);
+}
+
 static DEVICE_ATTR(temperature, S_IRUGO, temperature_show, NULL);
 static DEVICE_ATTR(level, S_IRUGO, level_show, NULL);
 static DEVICE_ATTR(throttle, S_IWUSR, NULL, throttle_store);
 static DEVICE_ATTR(alert, S_IRUGO, alert_show, NULL);
 static DEVICE_ATTR(tshut, S_IRUGO, tshut_show, NULL);
+static DEVICE_ATTR(tshut_state, S_IRUGO, tshut_state_show, NULL);
 
 static struct attribute *ladder_attrs[] = {
 	&dev_attr_temperature.attr,
@@ -300,6 +340,7 @@ static struct attribute *ladder_attrs[] = {
 	&dev_attr_throttle.attr,
 	&dev_attr_alert.attr,
 	&dev_attr_tshut.attr,
+	&dev_attr_tshut_state.attr,
 	NULL
 };
 
@@ -324,6 +365,7 @@ static int ladder_pm_cb(struct notifier_block *nb, unsigned long event,
 		mutex_unlock(&l->lock);
 		cancel_work_sync(&l->alert_work);
 		cancel_delayed_work_sync(&l->dwell_work);
+		cancel_delayed_work_sync(&l->verify_work);
 		break;
 	case PM_POST_SUSPEND:
 		mutex_lock(&l->lock);
@@ -366,6 +408,8 @@ int omap_thermal_expose_sensor(struct omap_bandgap *bg_ptr, int id,
 	mutex_init(&l->lock);
 	INIT_WORK(&l->alert_work, ladder_alert_fn);
 	INIT_DELAYED_WORK(&l->dwell_work, ladder_dwell_fn);
+	INIT_DELAYED_WORK(&l->verify_work, ladder_verify_fn);
+	l->verify_ms = LADDER_VERIFY_FIRST_MS;
 	l->pm_notifier.notifier_call = ladder_pm_cb;
 
 	ret = omap_bandgap_set_sensor_data(bg_ptr, id, l);
@@ -395,6 +439,8 @@ int omap_thermal_expose_sensor(struct omap_bandgap *bg_ptr, int id,
 	 */
 	schedule_delayed_work(&l->dwell_work,
 			      msecs_to_jiffies(LADDER_FIRST_EVAL_MS));
+	schedule_delayed_work(&l->verify_work,
+			      msecs_to_jiffies(l->verify_ms));
 	dev_info(bg_ptr->dev, "ladder %s sensor: trips %d/%d/%d mC\n", domain,
 		 ladder[1].trip, ladder[2].trip, ladder[3].trip);
 
@@ -413,6 +459,7 @@ int omap_thermal_remove_sensor(struct omap_bandgap *bg_ptr, int id)
 	mutex_unlock(&l->lock);
 	cancel_work_sync(&l->alert_work);
 	cancel_delayed_work_sync(&l->dwell_work);
+	cancel_delayed_work_sync(&l->verify_work);
 	unregister_pm_notifier(&l->pm_notifier);
 	if (bg_ptr->dev->parent && bg_ptr->dev->parent->parent)
 		sysfs_remove_link(&bg_ptr->dev->parent->parent->kobj,
