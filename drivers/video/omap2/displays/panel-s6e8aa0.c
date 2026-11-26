@@ -1724,6 +1724,8 @@ static void s6e8aa0_power_off(struct omap_dss_device *dssdev)
 
 	dsi_bus_lock(dssdev);
 
+	dsi_disable_video_output(dssdev, s6->channel0);
+
 	gpio_set_value(s6->pdata->reset_gpio, 0);
 	msleep(10);
 
