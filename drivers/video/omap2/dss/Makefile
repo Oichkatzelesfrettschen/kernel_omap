@@ -15,3 +15,7 @@ omapdss-$(CONFIG_OMAP5_DSS_HDMI) += hdmi.o \
 				cec.o hdcp_top.o
 
 ccflags-y += -Iarch/arm
+
+# ti_hdmi_4xxx_set_av_mute ends "if (wait == val);" so it always returns
+# -ETIMEDOUT; the intended comparison is not settled by the source.
+CFLAGS_ti_hdmi_4xxx_ip.o += $(call cc-disable-warning,empty-body)

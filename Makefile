@@ -405,6 +405,10 @@ ifeq ($(CLANG_TARGET_FLAGS_$(SRCARCH)),)
 $(error LLVM=$(LLVM) has no Clang target for ARCH=$(SRCARCH))
 endif
 CLANG_FLAGS	:= --target=$(CLANG_TARGET_FLAGS_$(SRCARCH))
+# Preprocess-only steps (assembler macros, linker scripts) receive the
+# -march of arch/arm/Makefile and never use it; the driver reports each as
+# -Wunused-command-line-argument, which KCFLAGS=-Werror turns into an error.
+CLANG_FLAGS	+= -Wno-unused-command-line-argument
 ifeq ($(LLVM_IAS),0)
 ifeq ($(CROSS_COMPILE),)
 $(error LLVM_IAS=0 requires CROSS_COMPILE to name the GNU assembler)

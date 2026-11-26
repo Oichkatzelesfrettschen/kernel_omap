@@ -56,3 +56,7 @@ obj-$(CONFIG_POWER_AVS)		+= avs/
 obj-$(CONFIG_CHARGER_SMB347)	+= smb347-bowser.o
 obj-$(CONFIG_SUMMIT_SMB347_Q)	+= smb347-otter.o
 obj-$(CONFIG_CHARGER_BQ2419x)	+= bq2419x_charger.o
+
+# max17040_probe ends "if (!skip_reset);" so the reset always runs, and
+# board-tuna sets skip_reset; the fix changes gauge behavior on the device.
+CFLAGS_max17040_battery.o += $(call cc-disable-warning,empty-body)
