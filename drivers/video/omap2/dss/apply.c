@@ -2062,7 +2062,7 @@ int dss_mgr_set_ovls(struct omap_overlay_manager *mgr)
 {
 	unsigned long flags;
 	int i;
-	if (!mgr || !mgr->ovls) {
+	if (!mgr) {
 		DSSERR("null pointer\n");
 		return -EINVAL;
 	}
