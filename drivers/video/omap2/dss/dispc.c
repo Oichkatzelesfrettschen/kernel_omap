@@ -2669,7 +2669,7 @@ int dispc_setup_wb(struct writeback_cache_data *wb)
 	return 0;
 }
 
-void dispc_go_wb()
+void dispc_go_wb(void)
 {
 	if (REG_GET(DISPC_CONTROL2, 6, 6)) {
 		DSSERR("GO bit already set for WB\n");

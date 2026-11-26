@@ -402,7 +402,7 @@ int omap_get_board_revision(void)
 	return omap_board.rev;
 }
 
-const char *omap_get_board_name()
+const char *omap_get_board_name(void)
 {
 	return (const char *)omap_board.name;
 }

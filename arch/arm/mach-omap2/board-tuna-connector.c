@@ -550,7 +550,7 @@ static struct fsa9480_platform_data tuna_fsa9480_pdata = {
 	.vbus_present		= tuna_otg_vbus_present,
 };
 
-static struct i2c_board_info __initdata tuna_connector_i2c4_boardinfo[] = {
+static struct i2c_board_info __initdata __maybe_unused tuna_connector_i2c4_boardinfo[] = {
 	{
 		I2C_BOARD_INFO("fsa9480", 0x4A >> 1),
 		.irq = GPIO_JACK_INT_N,
@@ -868,7 +868,7 @@ static struct sii9234_platform_data sii9234_pdata = {
 	.connect = sii9234_connect,
 };
 
-static struct i2c_board_info __initdata tuna_i2c5_boardinfo[] = {
+static struct i2c_board_info __initdata __maybe_unused tuna_i2c5_boardinfo[] = {
 	{
 		I2C_BOARD_INFO("sii9234_mhl_tx", 0x72>>1),
 		.irq = GPIO_MHL_INT,

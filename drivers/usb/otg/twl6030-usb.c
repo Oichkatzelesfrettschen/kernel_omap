@@ -95,7 +95,7 @@
 
 /* in module TWL6030_MODULE_MAIN_CHARGE */
 
-#define CHARGERUSB_CTRL1		0x8
+#define CHARGERUSB_CTRL1		0x08
 
 #define BOOST_MODE_OFF_MASK		0x00
 #define BOOST_MODE_ON_MASK		0x40
@@ -612,7 +612,7 @@ void twl6030_usb_ldo_off(void) {
 
 int twl6030_status = USB_EVENT_NONE;
 
-int twl6030_usbotg_get_status()
+int twl6030_usbotg_get_status(void)
 {
 	return twl6030_status;
 };
