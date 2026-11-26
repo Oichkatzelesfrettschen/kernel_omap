@@ -1070,6 +1070,9 @@ static void tuna_hdmi_mux_init(void)
 }
 
 static struct omap_dss_hdmi_data tuna_hdmi_data = {
+	/* tuna has no TPD12S015 level shifter; GPIO 0 is the headset jack detect */
+	.ct_cp_hpd_gpio = -1,
+	.ls_oe_gpio = -1,
 	.hpd_gpio = TUNA_GPIO_HDMI_HPD,
 };
 
