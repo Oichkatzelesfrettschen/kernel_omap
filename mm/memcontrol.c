@@ -2005,7 +2005,7 @@ void mem_cgroup_update_page_stat(struct page *page,
 
 	switch (idx) {
 	case MEMCG_NR_FILE_MAPPED:
-		idx = MEM_CGROUP_STAT_FILE_MAPPED;
+		idx = (enum mem_cgroup_page_stat_item)MEM_CGROUP_STAT_FILE_MAPPED;
 		break;
 	default:
 		BUG();
