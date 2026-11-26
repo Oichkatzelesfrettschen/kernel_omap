@@ -127,7 +127,7 @@ int drm_queues_info(struct seq_file *m, void *data)
 		q = dev->queuelist[i];
 		atomic_inc(&q->use_count);
 		seq_printf(m,   "%5d/0x%03x %5d %5d"
-			   " %5d/%c%c/%c%c%c %5Zd\n",
+			   " %5d/%c%c/%c%c%c %5zd\n",
 			   i,
 			   q->flags,
 			   atomic_read(&q->use_count),
