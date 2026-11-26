@@ -605,6 +605,7 @@ static struct regulator_init_data omap4_vcxio_idata = {
 
 static struct regulator_consumer_supply omap4_vusb_supply[] = {
 		REGULATOR_SUPPLY("vusb", "twl6030_usb"),
+		REGULATOR_SUPPLY("vusb", "tuna_otg"),
 };
 
 static struct regulator_init_data omap4_vusb_idata = {
