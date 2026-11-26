@@ -847,9 +847,8 @@ int __init omap4_tuna_connector_init(void)
 	omap_mux_init_gpio(GPIO_MHL_INT, OMAP_PIN_INPUT);
 	gpio_direction_input(GPIO_MHL_INT);
 
-	gpio_request(TUNA_GPIO_HDMI_HPD, NULL);
+	/* hdmi_panel requests the HPD GPIO as an input and takes its IRQ */
 	omap_mux_init_gpio(TUNA_GPIO_HDMI_HPD, OMAP_PIN_INPUT | OMAP_PULL_ENA);
-	gpio_direction_input(TUNA_GPIO_HDMI_HPD);
 
 	tuna_i2c5_boardinfo[0].irq = gpio_to_irq(GPIO_MHL_INT);
 	i2c_register_board_info(5, tuna_i2c5_boardinfo,
