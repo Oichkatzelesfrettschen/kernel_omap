@@ -377,7 +377,7 @@ static inline struct hsi_channel *hsi_ctrl_get_ch(struct hsi_dev *hsi_ctrl,
 		if (hsi_ctrl->hsi_port[i].port_number == port)
 			break;
 
-		return &hsi_ctrl->hsi_port[i].hsi_channel[channel];
+	return &hsi_ctrl->hsi_port[i].hsi_channel[channel];
 }
 
 /* HSI IO access */
