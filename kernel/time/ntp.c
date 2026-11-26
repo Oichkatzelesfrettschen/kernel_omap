@@ -239,7 +239,7 @@ static inline void pps_fill_timex(struct timex *txc)
  * ntp_synced - Returns 1 if the NTP status is not UNSYNC
  *
  */
-static inline int ntp_synced(void)
+static __maybe_unused inline int ntp_synced(void)
 {
 	return !(time_status & STA_UNSYNC);
 }

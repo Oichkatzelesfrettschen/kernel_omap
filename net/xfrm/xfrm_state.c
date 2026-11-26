@@ -389,7 +389,7 @@ static void xfrm_state_gc_task(struct work_struct *work)
 	wake_up(&net->xfrm.km_waitq);
 }
 
-static inline unsigned long make_jiffies(long secs)
+static __maybe_unused inline unsigned long make_jiffies(long secs)
 {
 	if (secs >= (MAX_SCHEDULE_TIMEOUT-1)/HZ)
 		return MAX_SCHEDULE_TIMEOUT-1;

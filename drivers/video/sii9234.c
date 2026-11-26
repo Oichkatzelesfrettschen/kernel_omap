@@ -615,7 +615,7 @@ static int tpi_write_reg(struct sii9234_data *sii9234, unsigned int offset,
 			value);
 }
 
-static int tpi_read_reg(struct sii9234_data *sii9234, unsigned int offset,
+static __maybe_unused int tpi_read_reg(struct sii9234_data *sii9234, unsigned int offset,
 		u8 *value)
 {
 	int ret;

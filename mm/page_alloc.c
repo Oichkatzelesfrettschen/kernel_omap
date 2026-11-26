@@ -438,7 +438,7 @@ static inline void clear_page_guard_flag(struct page *page)
 	__clear_bit(PAGE_DEBUG_FLAG_GUARD, &page->debug_flags);
 }
 #else
-static inline void set_page_guard_flag(struct page *page) { }
+static __maybe_unused inline void set_page_guard_flag(struct page *page) { }
 static inline void clear_page_guard_flag(struct page *page) { }
 #endif
 

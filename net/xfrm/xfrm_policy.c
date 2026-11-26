@@ -1530,7 +1530,7 @@ free_dst:
 	goto out;
 }
 
-static int inline
+static __maybe_unused int inline
 xfrm_dst_alloc_copy(void **target, const void *src, int size)
 {
 	if (!*target) {

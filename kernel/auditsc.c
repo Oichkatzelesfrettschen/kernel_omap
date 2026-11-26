@@ -277,7 +277,7 @@ struct audit_context {
 #endif
 };
 
-static inline int open_arg(int flags, int mask)
+static __maybe_unused inline int open_arg(int flags, int mask)
 {
 	int n = ACC_MODE(flags);
 	if (flags & (O_TRUNC | O_CREAT))

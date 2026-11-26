@@ -558,7 +558,7 @@ static struct i2c_board_info __initdata tuna_connector_i2c4_boardinfo[] = {
 	},
 };
 
-static int tuna_otg_set_host(struct usb_otg *otg, struct usb_bus *host)
+static __maybe_unused int tuna_otg_set_host(struct usb_otg *otg, struct usb_bus *host)
 {
 	otg->host = host;
 	if (!host)
@@ -566,7 +566,7 @@ static int tuna_otg_set_host(struct usb_otg *otg, struct usb_bus *host)
 	return 0;
 }
 
-static int tuna_otg_set_peripheral(struct usb_otg *otg,
+static __maybe_unused int tuna_otg_set_peripheral(struct usb_otg *otg,
 				   struct usb_gadget *gadget)
 {
 	otg->gadget = gadget;
@@ -575,7 +575,7 @@ static int tuna_otg_set_peripheral(struct usb_otg *otg,
 	return 0;
 }
 
-static void tuna_otg_work(struct work_struct *data)
+static __maybe_unused void tuna_otg_work(struct work_struct *data)
 {
 	struct tuna_otg *tuna_otg = container_of(data, struct tuna_otg,
 						set_vbus_work);
@@ -593,7 +593,7 @@ static void tuna_otg_work(struct work_struct *data)
 	mutex_unlock(&tuna_otg->lock);
 }
 
-static int tuna_otg_set_vbus(struct usb_otg *otg, bool enabled)
+static __maybe_unused int tuna_otg_set_vbus(struct usb_otg *otg, bool enabled)
 {
 	struct usb_phy *phy = otg->phy;
 	struct tuna_otg *tuna_otg = container_of(phy, struct tuna_otg, phy);
@@ -606,7 +606,7 @@ static int tuna_otg_set_vbus(struct usb_otg *otg, bool enabled)
 	return 0;
 }
 
-static int tuna_otg_phy_init(struct usb_phy *phy)
+static __maybe_unused int tuna_otg_phy_init(struct usb_phy *phy)
 {
 	if (phy->last_event == USB_EVENT_ID)
 		omap4_usb_phy_power(phy->dev, 1);
@@ -615,7 +615,7 @@ static int tuna_otg_phy_init(struct usb_phy *phy)
 	return 0;
 }
 
-static void tuna_otg_phy_shutdown(struct usb_phy *phy)
+static __maybe_unused void tuna_otg_phy_shutdown(struct usb_phy *phy)
 {
 	omap4_usb_phy_power(phy->dev, 0);
 }

@@ -147,7 +147,7 @@ static inline struct snd_soc_dapm_widget *dapm_cnew_widget(
 }
 
 /* get snd_card from DAPM context */
-static inline struct snd_card *dapm_get_snd_card(
+static __maybe_unused inline struct snd_card *dapm_get_snd_card(
 	struct snd_soc_dapm_context *dapm)
 {
 	if (dapm->codec)
@@ -162,7 +162,7 @@ static inline struct snd_card *dapm_get_snd_card(
 }
 
 /* get soc_card from DAPM context */
-static inline struct snd_soc_card *dapm_get_soc_card(
+static __maybe_unused inline struct snd_soc_card *dapm_get_soc_card(
 		struct snd_soc_dapm_context *dapm)
 {
 	if (dapm->codec)

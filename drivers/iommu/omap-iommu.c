@@ -283,7 +283,7 @@ static inline int iotlb_cr_valid(struct cr_regs *cr)
 	return arch_iommu->cr_valid(cr);
 }
 
-static inline struct cr_regs *iotlb_alloc_cr(struct omap_iommu *obj,
+static __maybe_unused inline struct cr_regs *iotlb_alloc_cr(struct omap_iommu *obj,
 					     struct iotlb_entry *e)
 {
 	if (!e)
@@ -347,7 +347,7 @@ static void iotlb_load_cr(struct omap_iommu *obj, struct cr_regs *cr)
  * @cr:		contents of cam and ram register
  * @buf:	output buffer
  **/
-static inline ssize_t iotlb_dump_cr(struct omap_iommu *obj, struct cr_regs *cr,
+static __maybe_unused inline ssize_t iotlb_dump_cr(struct omap_iommu *obj, struct cr_regs *cr,
 				    char *buf)
 {
 	BUG_ON(!cr || !buf);

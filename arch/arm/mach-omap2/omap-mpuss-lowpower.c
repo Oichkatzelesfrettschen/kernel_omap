@@ -168,7 +168,7 @@ static inline void set_cpu_next_pwrst(unsigned int cpu_id,
 /*
  * Read CPU's previous power state
  */
-static inline unsigned int read_cpu_prev_pwrst(unsigned int cpu_id)
+static __maybe_unused inline unsigned int read_cpu_prev_pwrst(unsigned int cpu_id)
 {
 	struct omap4_cpu_pm_info *pm_info = &per_cpu(omap4_pm_info, cpu_id);
 

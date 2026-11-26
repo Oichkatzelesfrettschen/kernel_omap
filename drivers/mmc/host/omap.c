@@ -690,7 +690,7 @@ mmc_omap_xfer_data(struct mmc_omap_host *host, int write)
 	}
 }
 
-static inline void mmc_omap_report_irq(u16 status)
+static __maybe_unused inline void mmc_omap_report_irq(u16 status)
 {
 	static const char *mmc_omap_status_bits[] = {
 		"EOC", "CD", "CB", "BRS", "EOFB", "DTO", "DCRC", "CTO",

@@ -233,7 +233,7 @@ static void ftrace_sync(struct work_struct *work)
 	 */
 }
 
-static void ftrace_sync_ipi(void *data)
+static __maybe_unused void ftrace_sync_ipi(void *data)
 {
 	/* Probably not needed, but do it anyway */
 	smp_rmb();

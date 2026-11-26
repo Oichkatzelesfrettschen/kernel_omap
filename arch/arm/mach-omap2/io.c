@@ -424,7 +424,7 @@ void __iomem *__omap_ioremap_caller(unsigned long phys_addr, size_t size,
 	return __arm_ioremap_caller(phys_addr, size, mtype, caller);
 }
 
-static inline void _phy_map_set_so_range(unsigned long min, unsigned long max)
+static __maybe_unused inline void _phy_map_set_so_range(unsigned long min, unsigned long max)
 {
 	_min_so_phy_map = min;
 	_max_so_phy_map = max;

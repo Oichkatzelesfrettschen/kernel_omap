@@ -35,7 +35,7 @@
 # include <linux/efi.h>
 #endif
 
-static inline unsigned long size_inside_page(unsigned long start,
+static __maybe_unused inline unsigned long size_inside_page(unsigned long start,
 					     unsigned long size)
 {
 	unsigned long sz;

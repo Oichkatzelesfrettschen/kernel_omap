@@ -347,7 +347,7 @@ static inline void cfq_mark_cfqq_##name(struct cfq_queue *cfqq)		\
 {									\
 	(cfqq)->flags |= (1 << CFQ_CFQQ_FLAG_##name);			\
 }									\
-static inline void cfq_clear_cfqq_##name(struct cfq_queue *cfqq)	\
+static inline void __maybe_unused cfq_clear_cfqq_##name(struct cfq_queue *cfqq)	\
 {									\
 	(cfqq)->flags &= ~(1 << CFQ_CFQQ_FLAG_##name);			\
 }									\
@@ -559,7 +559,7 @@ static inline u64 max_vdisktime(u64 min_vdisktime, u64 vdisktime)
 	return min_vdisktime;
 }
 
-static inline u64 min_vdisktime(u64 min_vdisktime, u64 vdisktime)
+static __maybe_unused inline u64 min_vdisktime(u64 min_vdisktime, u64 vdisktime)
 {
 	s64 delta = (s64)(vdisktime - min_vdisktime);
 	if (delta < 0)

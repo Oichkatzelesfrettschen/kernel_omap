@@ -124,7 +124,7 @@ static int h4_enqueue(struct hci_uart *hu, struct sk_buff *skb)
 	return 0;
 }
 
-static inline int h4_check_data_len(struct h4_struct *h4, int len)
+static __maybe_unused inline int h4_check_data_len(struct h4_struct *h4, int len)
 {
 	register int room = skb_tailroom(h4->rx_skb);
 
