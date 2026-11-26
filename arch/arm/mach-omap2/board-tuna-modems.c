@@ -223,7 +223,7 @@ static void umts_modem_cfg_gpio(void)
 	}
 
 	if (gpio_phone_active)
-		irq_set_irq_type(OMAP_GPIO_MIPI_HSI_PHONE_ACTIVE,
+		irq_set_irq_type(gpio_to_irq(OMAP_GPIO_MIPI_HSI_PHONE_ACTIVE),
 						     IRQ_TYPE_LEVEL_HIGH);
 
 	pr_debug("umts_modem_cfg_gpio done\n");
@@ -386,7 +386,7 @@ static void dpram_cfg_gpio(void)
 
 	gpio_request(OMAP_GPIO_DPRAM_INT_N, "dpram_int");
 	gpio_direction_input(OMAP_GPIO_DPRAM_INT_N);
-	irq_set_irq_type(OMAP_GPIO_DPRAM_INT_N,
+	irq_set_irq_type(gpio_to_irq(OMAP_GPIO_DPRAM_INT_N),
 				IRQ_TYPE_LEVEL_LOW);
 
 	/*dpram platform init setting*/
@@ -489,7 +489,7 @@ static void cdma_modem_cfg_gpio(void)
 	}
 
 	if (gpio_phone_active)
-		irq_set_irq_type(OMAP_GPIO_DPRAM_PHONE_ACTIVE,
+		irq_set_irq_type(gpio_to_irq(OMAP_GPIO_DPRAM_PHONE_ACTIVE),
 						     IRQ_TYPE_LEVEL_HIGH);
 }
 
@@ -735,6 +735,12 @@ void __init modem_toro_init(void)
 	platform_device_register(&lte_modem_wake);
 }
 
+static void __init modem_res_set_gpio_irq(struct resource *res, int gpio)
+{
+	res->start = gpio_to_irq(gpio);
+	res->end = res->start;
+}
+
 static int __init init_modem(void)
 {
 	pr_debug("[MODEM_IF] init_modem\n");
@@ -743,16 +749,25 @@ static int __init init_modem(void)
 	case TUNA_TYPE_MAGURO:	/* HSPA */
 		/* umts gpios configuration */
 		umts_modem_cfg_gpio();
+		modem_res_set_gpio_irq(&umts_modem_res[0],
+				       OMAP_GPIO_MIPI_HSI_PHONE_ACTIVE);
 		platform_device_register(&umts_modem);
 		break;
 
 	case TUNA_TYPE_TORO:	/* LTE */
 		/* cdma gpios configuration */
 		cdma_modem_cfg_gpio();
+		modem_res_set_gpio_irq(&cdma_modem_res[0],
+				       OMAP_GPIO_DPRAM_PHONE_ACTIVE);
+		modem_res_set_gpio_irq(&cdma_modem_res[1],
+				       OMAP_GPIO_DPRAM_INT_N);
 		platform_device_register(&cdma_modem);
 
 		/* lte gpios configuration */
 		lte_modem_cfg_gpio();
+		modem_res_set_gpio_irq(&lte_modem_res[0], OMAP_GPIO_LTE_ACTIVE);
+		modem_res_set_gpio_irq(&lte_modem_res[1],
+				       OMAP_GPIO_CMC2AP_INT2);
 		platform_device_register(&lte_modem);
 		break;
 
