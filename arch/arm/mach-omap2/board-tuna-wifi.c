@@ -104,8 +104,8 @@ int __init tuna_init_wifi_mem(void)
 static struct resource tuna_wifi_resources[] = {
 	[0] = {
 		.name		= "bcmdhd_wlan_irq",
-		.start		= GPIO_WLAN_IRQ,
-		.end		= GPIO_WLAN_IRQ,
+		.start		= 0,
+		.end		= 0,
 		.flags      = IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHLEVEL | IORESOURCE_IRQ_SHAREABLE,
 	},
 };
@@ -392,6 +392,8 @@ int __init tuna_wlan_init(void)
 	pr_debug("%s: start\n", __func__);
 
 	tuna_wlan_gpio();
+	tuna_wifi_resources[0].start = gpio_to_irq(GPIO_WLAN_IRQ);
+	tuna_wifi_resources[0].end = tuna_wifi_resources[0].start;
 	tuna_init_wifi_mem();
 	platform_device_register(&omap_vwlan_device);
 	return platform_device_register(&tuna_wifi_device);
