@@ -26,6 +26,7 @@
 #include <linux/pm.h>
 #include <linux/syscore_ops.h>
 #include <linux/vmalloc.h>
+#include <linux/slab.h>
 #include <linux/signal.h>
 #ifdef CONFIG_ANDROID
 #include <linux/device.h>
@@ -678,15 +679,23 @@ static void tf_adjust_command_format(union tf_command *pcommand,
 end:;
 }
 
+/*
+ * The command and answer unions take 1160 bytes, more than the 1024-byte
+ * kernel stack frame limit, so each message ioctl allocates them.
+ */
+struct tf_ioctl_message {
+	union tf_tee_command scommand;
+	union tf_command command;
+	union tf_answer answer;
+};
+
 static long tf_device_ioctl(struct file *file, unsigned int ioctl_num,
 	unsigned long ioctl_param)
 {
 	int result = S_SUCCESS;
 	struct tf_connection *connection;
 	struct tf_tee_command_header sheader;
-	union tf_tee_command scommand;
-	union tf_command command;
-	union tf_answer answer;
+	struct tf_ioctl_message *msg = NULL;
 	u32 command_size, expected_size = 0;
 	u32 answer_size;
 	void *user_answer;
@@ -816,25 +825,31 @@ static long tf_device_ioctl(struct file *file, unsigned int ioctl_num,
 			goto exit;
 		}
 /*
-		if (copy_from_user(&command, (union tf_command *)ioctl_param,
+		if (copy_from_user(&msg->command, (union tf_command *)ioctl_param,
 				command_size * sizeof(u32))) {
 			result = -EFAULT;
 			goto exit;
 		}
 */
-		if (copy_from_user(&scommand, (union tf_tee_command *)ioctl_param,
+		msg = kzalloc(sizeof(*msg), GFP_KERNEL);
+		if (msg == NULL) {
+			result = -ENOMEM;
+			goto exit;
+		}
+
+		if (copy_from_user(&msg->scommand, (union tf_tee_command *)ioctl_param,
 				command_size * sizeof(u32))) {
 			result = -EFAULT;
 			goto exit;
 		}
 
-			tf_adjust_command_format(&command,
-								&scommand,
-								scommand.header.message_type,
+			tf_adjust_command_format(&msg->command,
+								&msg->scommand,
+								msg->scommand.header.message_type,
 				command_size * sizeof(u32),
-								scommand.open_client_session.param_types);
+								msg->scommand.open_client_session.param_types);
 		dprintk(KERN_ERR "%s: tf_command command_size %d\n",
-			__func__, command.register_shared_memory.message_size);
+			__func__, msg->command.register_shared_memory.message_size);
 
 		connection = tf_conn_from_file(file);
 		BUG_ON(connection == NULL);
@@ -842,22 +857,22 @@ static long tf_device_ioctl(struct file *file, unsigned int ioctl_num,
 		/*
 		 * The answer memory space address is in the operation_id field
 		 */
-		user_answer = (void *) command.header.operation_id;
+		user_answer = (void *) msg->command.header.operation_id;
 
 		atomic_inc(&(connection->pending_op_count));
 
 		dprintk(KERN_WARNING "%s(%p): Sending message type  0x%08x\n",
-			__func__, file, command.header.message_type);
+			__func__, file, msg->command.header.message_type);
 
-		switch (command.header.message_type) {
+		switch (msg->command.header.message_type) {
 		case TF_MESSAGE_TYPE_OPEN_CLIENT_SESSION:
 			result = tf_open_client_session(connection,
-				&command, &answer);
+				&msg->command, &msg->answer);
 			break;
 
 		case TF_MESSAGE_TYPE_CLOSE_CLIENT_SESSION:
 			result = tf_close_client_session(connection,
-				&command, &answer);
+				&msg->command, &msg->answer);
 			break;
 
 		case TF_MESSAGE_TYPE_REGISTER_SHARED_MEMORY:
@@ -883,29 +898,29 @@ static long tf_device_ioctl(struct file *file, unsigned int ioctl_num,
 			}
 
 			result = tf_register_shared_memory(connection,
-				&command, &answer, shmem_addr);
+				&msg->command, &msg->answer, shmem_addr);
 			break;
 
 		case TF_MESSAGE_TYPE_RELEASE_SHARED_MEMORY:
 			result = tf_release_shared_memory(connection,
-				&command, &answer);
+				&msg->command, &msg->answer);
 			break;
 
 		case TF_MESSAGE_TYPE_INVOKE_CLIENT_COMMAND:
 			result = tf_invoke_client_command(connection,
-				&command, &answer);
+				&msg->command, &msg->answer);
 			break;
 
 		case TF_MESSAGE_TYPE_CANCEL_CLIENT_COMMAND:
 			result = tf_cancel_client_command(connection,
-				&command, &answer);
+				&msg->command, &msg->answer);
 			break;
 
 		default:
 			dprintk(KERN_ERR
 				"%s(%p): Incorrect message type (0x%08x)!\n",
 				__func__, connection,
-				command.header.message_type);
+				msg->command.header.message_type);
 			result = -EOPNOTSUPP;
 			break;
 		}
@@ -924,10 +939,10 @@ static long tf_device_ioctl(struct file *file, unsigned int ioctl_num,
 		 * The driver does not check this field, only copy back to user
 		 * space the data handed over by Secure World
 		 */
-		answer_size = answer.header.message_size +
+		answer_size = msg->answer.header.message_size +
 			sizeof(struct tf_answer_header)/sizeof(u32);
 		if (copy_to_user(user_answer,
-				&answer, answer_size * sizeof(u32))) {
+				&msg->answer, answer_size * sizeof(u32))) {
 			dprintk(KERN_WARNING
 				"%s(%p): Failed to copy back answer to %p\n",
 				__func__, file, user_answer);
@@ -989,6 +1004,7 @@ static long tf_device_ioctl(struct file *file, unsigned int ioctl_num,
 	}
 
 exit:
+	kfree(msg);
 	return result;
 }
 

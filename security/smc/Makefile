@@ -62,6 +62,3 @@ obj-$(CONFIG_SECURITY_MIDDLEWARE_COMPONENT) += rproc_drm.o
 
 obj-$(CONFIG_TF_CRYPTO_RNG) += tf_crypto_rng.o
 
-# tf_device_ioctl keeps its command and answer unions on the stack; clang
-# measures 1160 bytes against the 1024 byte limit.
-CFLAGS_tf_device.o += $(call cc-disable-warning,frame-larger-than)
