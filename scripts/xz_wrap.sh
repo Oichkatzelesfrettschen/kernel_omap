@@ -20,4 +20,12 @@ case $SRCARCH in
 	sparc)          BCJ=--sparc ;;
 esac
 
+# A BCJ filter needs an xz built with it; the AOSP prebuilt lacks every BCJ
+# filter, and the kernel decompressor reads the stream either way.
+if [ -n "$BCJ" ] && ! xz --check=crc32 $BCJ --lzma2=$LZMA2OPTS,dict=32MiB \
+	< /dev/null > /dev/null 2>&1; then
+	echo "xz_wrap.sh: xz lacks $BCJ, compressing without a BCJ filter" >&2
+	BCJ=
+fi
+
 exec xz --check=crc32 $BCJ --lzma2=$LZMA2OPTS,dict=32MiB
