@@ -46,3 +46,6 @@ lib-$(CONFIG_ARCH_SHARK)	+= io-shark.o
 
 $(obj)/csumpartialcopy.o:	$(obj)/csumpartialcopygeneric.S
 $(obj)/csumpartialcopyuser.o:	$(obj)/csumpartialcopygeneric.S
+
+# backtrace.S stores PC with stmfd to measure the CPU-specific PC offset.
+AFLAGS_backtrace.o += -Wa,--no-warn
