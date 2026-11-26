@@ -576,8 +576,27 @@ static struct regulator_init_data tuna_vdac = {
 	.consumer_supplies	= tuna_vdac_supply,
 };
 
+static struct regulator_consumer_supply tuna_clk32kaudio_supply[] = {
+	{
+		.supply = "clk32kaudio",
+	},
+	{
+		.supply = "twl6040_clk32k",
+	}
+};
+
+static struct regulator_init_data tuna_clk32kaudio = {
+	.constraints = {
+		.valid_ops_mask		= REGULATOR_CHANGE_STATUS,
+		.boot_on                = true,
+	},
+	.num_consumer_supplies  = ARRAY_SIZE(tuna_clk32kaudio_supply),
+	.consumer_supplies      = tuna_clk32kaudio_supply,
+};
+
 static struct twl4030_platform_data tuna_twldata = {
 	/* Regulators */
+	.clk32kaudio	= &tuna_clk32kaudio,
 	.vaux1		= &tuna_vaux1,
 	.vaux3		= &tuna_vaux3,
 	.vmmc		= &tuna_vmmc,
