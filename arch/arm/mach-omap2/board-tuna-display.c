@@ -965,6 +965,10 @@ static struct omap_dss_device tuna_oled_device = {
 		.data4_pol	= 0,
 	},
 	.panel = {
+		.timings = {
+			.x_res = 720,
+			.y_res = 1280,
+		},
 		.dsi_mode		= OMAP_DSS_DSI_VIDEO_MODE,
 		.width_in_um	= 58000,
 		.height_in_um	= 102000,
@@ -1104,15 +1108,9 @@ static struct dsscomp_platform_data dsscomp_config_tuna = {
 
 static struct sgx_omaplfb_config omaplfb_config_tuna[] = {
 	{
-	.vram_buffers = 4,
-	.swap_chain_length = 2,
-	},
-#if defined(CONFIG_OMAP4_DSS_HDMI)
-	{
 	.vram_buffers = 2,
 	.swap_chain_length = 2,
 	},
-#endif
 };
 
 static struct sgx_omaplfb_platform_data omaplfb_plat_data_tuna = {
