@@ -684,6 +684,22 @@ static inline void free_bootmem_cpumask_var(cpumask_var_t mask)
 }
 #endif /* CONFIG_CPUMASK_OFFSTACK */
 
+/*
+ * Without CONFIG_CPUMASK_OFFSTACK a cpumask_var_t is an array, so testing its
+ * address against NULL is always true.
+ */
+#ifdef CONFIG_CPUMASK_OFFSTACK
+static inline bool cpumask_available(cpumask_var_t mask)
+{
+	return mask != NULL;
+}
+#else
+static inline bool cpumask_available(cpumask_var_t mask)
+{
+	return true;
+}
+#endif
+
 /* It's common to want to use cpu_all_mask in struct member initializers,
  * so it has to refer to an address rather than a pointer. */
 extern const DECLARE_BITMAP(cpu_all_bits, NR_CPUS);
