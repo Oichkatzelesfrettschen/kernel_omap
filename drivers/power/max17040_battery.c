@@ -466,7 +466,7 @@ static int __devinit max17040_probe(struct i2c_client *client,
 		return ret;
 	}
 
-	if (!chip->pdata->skip_reset);
+	if (!chip->pdata->skip_reset)
 		max17040_reset(client);
 	max17040_get_version(client);
 
