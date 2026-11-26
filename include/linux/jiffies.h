@@ -4,6 +4,7 @@
 #include <linux/math64.h>
 #include <linux/kernel.h>
 #include <linux/types.h>
+#include <linux/cache.h>
 #include <linux/time.h>
 #include <linux/timex.h>
 #include <asm/param.h>			/* for HZ */
@@ -78,7 +79,7 @@
  * without sampling the sequence number in xtime_lock.
  * get_jiffies_64() will do this for you as appropriate.
  */
-extern u64 __jiffy_data jiffies_64;
+extern u64 __cacheline_aligned_in_smp jiffies_64;
 extern unsigned long volatile __jiffy_data jiffies;
 
 #if (BITS_PER_LONG < 64)

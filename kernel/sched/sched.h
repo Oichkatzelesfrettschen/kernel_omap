@@ -472,7 +472,7 @@ static inline int cpu_of(struct rq *rq)
 #endif
 }
 
-DECLARE_PER_CPU(struct rq, runqueues);
+DECLARE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
 #define cpu_rq(cpu)		(&per_cpu(runqueues, (cpu)))
 #define this_rq()		(&__get_cpu_var(runqueues))
@@ -597,8 +597,10 @@ static inline void __set_task_cpu(struct task_struct *p, unsigned int cpu)
 #ifdef CONFIG_SCHED_DEBUG
 # include <linux/static_key.h>
 # define const_debug __read_mostly
+# define const_debug_extern
 #else
 # define const_debug const
+# define const_debug_extern const
 #endif
 
 extern const_debug unsigned int sysctl_sched_features;
@@ -926,9 +928,9 @@ extern void deactivate_task(struct rq *rq, struct task_struct *p, int flags);
 
 extern void check_preempt_curr(struct rq *rq, struct task_struct *p, int flags);
 
-extern const_debug unsigned int sysctl_sched_time_avg;
-extern const_debug unsigned int sysctl_sched_nr_migrate;
-extern const_debug unsigned int sysctl_sched_migration_cost;
+extern const_debug_extern unsigned int sysctl_sched_time_avg;
+extern const_debug_extern unsigned int sysctl_sched_nr_migrate;
+extern const_debug_extern unsigned int sysctl_sched_migration_cost;
 
 static inline u64 sched_avg_period(void)
 {
