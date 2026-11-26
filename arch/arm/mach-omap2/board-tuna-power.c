@@ -434,7 +434,7 @@ static struct max17040_platform_data max17043_pdata = {
 	.limit_recharging_time = 5400, /* 90 min */
 };
 
-static struct i2c_board_info __initdata max17043_i2c[] = {
+static const __initdata struct i2c_board_info max17043_i2c[] = {
 	{
 		I2C_BOARD_INFO("max17040", (0x6C >> 1)),
 		.platform_data = &max17043_pdata,
@@ -459,6 +459,7 @@ __setup("androidboot.mode=", tuna_charger_mode_setup);
 void __init omap4_tuna_power_init(void)
 {
 	struct platform_device *pdev;
+	struct i2c_board_info max17043_board;
 	int status;
 
 	/* Vsel0 = gpio, vsel1 = gnd */
@@ -513,8 +514,9 @@ void __init omap4_tuna_power_init(void)
 		pr_err("cannot register pda-power\n");
 
 	max17043_pdata.use_fuel_alert = !is_charging_mode;
-	max17043_i2c[0].irq = gpio_to_irq(GPIO_FUEL_ALERT);
-	i2c_register_board_info(4, max17043_i2c, ARRAY_SIZE(max17043_i2c));
+	max17043_board = max17043_i2c[0];
+	max17043_board.irq = gpio_to_irq(GPIO_FUEL_ALERT);
+	i2c_register_board_info(4, &max17043_board, 1);
 
 	if (enable_sr)
 		omap_enable_smartreflex_on_init();
