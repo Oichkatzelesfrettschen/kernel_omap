@@ -87,6 +87,20 @@ static int max17040_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_STATUS:
 		val->intval = chip->status;
 		break;
+	case POWER_SUPPLY_PROP_PRESENT:
+		val->intval = chip->online;
+		break;
+	case POWER_SUPPLY_PROP_TECHNOLOGY:
+		val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_ENABLED:
+		val->intval = chip->pdata->charger_enable();
+		break;
+	case POWER_SUPPLY_PROP_TEMP:
+		if (!chip->pdata->get_bat_temp)
+			return -ENODATA;
+		val->intval = chip->bat_temp;
+		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 		val->intval = chip->bat_health;
 		break;
@@ -144,7 +158,8 @@ static void max17040_get_vcell(struct i2c_client *client)
 	msb = max17040_read_reg(client, MAX17040_VCELL_MSB);
 	lsb = max17040_read_reg(client, MAX17040_VCELL_LSB);
 
-	chip->vcell = (msb << 4) + (lsb >> 4);
+	/* VCELL is a 12-bit count of 1.25 mV */
+	chip->vcell = ((msb << 4) + (lsb >> 4)) * 1250;
 }
 
 #define TO_FIXED(a,b) (((a) << 8) + (b))
@@ -210,7 +225,7 @@ static void max17040_get_status(struct i2c_client *client)
 		if (chip->pdata->charger_enable())
 			chip->status = POWER_SUPPLY_STATUS_CHARGING;
 		else
-			chip->status = STATUS_CHARGE_FULL ?
+			chip->status = chip->charger_status == STATUS_CHARGE_FULL ?
 				POWER_SUPPLY_STATUS_FULL :
 				POWER_SUPPLY_STATUS_NOT_CHARGING;
 	} else {
@@ -322,8 +337,14 @@ static void max17040_charger_update(struct max17040_chip *chip)
 static void max17040_work(struct work_struct *work)
 {
 	struct max17040_chip *chip;
+	int prev_soc;
+	int prev_status;
+	int prev_health;
 
 	chip = container_of(work, struct max17040_chip, work.work);
+	prev_soc = chip->soc;
+	prev_status = chip->status;
+	prev_health = chip->bat_health;
 
 	max17040_get_vcell(chip->client);
 	max17040_get_soc(chip->client);
@@ -335,15 +356,33 @@ static void max17040_work(struct work_struct *work)
 		chip->is_timer_flag = false;
 	max17040_get_status(chip->client);
 
+	if (chip->soc != prev_soc || chip->status != prev_status ||
+			chip->bat_health != prev_health)
+		power_supply_changed(&chip->battery);
+
 	schedule_delayed_work(&chip->work, MAX17040_DELAY);
+}
+
+static void max17040_ext_power_changed(struct power_supply *psy)
+{
+	struct max17040_chip *chip = container_of(psy,
+				struct max17040_chip, battery);
+
+	cancel_delayed_work(&chip->work);
+	schedule_delayed_work(&chip->work, 0);
 }
 
 static enum power_supply_property max17040_battery_props[] = {
 	POWER_SUPPLY_PROP_STATUS,
 	POWER_SUPPLY_PROP_HEALTH,
+	POWER_SUPPLY_PROP_PRESENT,
 	POWER_SUPPLY_PROP_ONLINE,
+	POWER_SUPPLY_PROP_TECHNOLOGY,
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_CAPACITY,
+	POWER_SUPPLY_PROP_CHARGE_ENABLED,
+	/* must be last: dropped when the board has no thermistor */
+	POWER_SUPPLY_PROP_TEMP,
 };
 
 static irqreturn_t max17040_alert(int irq, void *data)
@@ -394,7 +433,9 @@ static int __devinit max17040_probe(struct i2c_client *client,
 	chip->battery.type		= POWER_SUPPLY_TYPE_BATTERY;
 	chip->battery.get_property	= max17040_get_property;
 	chip->battery.properties	= max17040_battery_props;
-	chip->battery.num_properties	= ARRAY_SIZE(max17040_battery_props);
+	chip->battery.num_properties	= ARRAY_SIZE(max17040_battery_props) -
+					(chip->pdata->get_bat_temp ? 0 : 1);
+	chip->battery.external_power_changed = max17040_ext_power_changed;
 
 	chip->bat_health = POWER_SUPPLY_HEALTH_GOOD;
 	chip->charger_status = STATUS_CHARGABLE;
@@ -416,6 +457,8 @@ static int __devinit max17040_probe(struct i2c_client *client,
 	if (!chip->pdata->limit_recharging_time)
 		chip->pdata->limit_recharging_time = 5400;
 
+	INIT_DELAYED_WORK_DEFERRABLE(&chip->work, max17040_work);
+
 	ret = power_supply_register(&client->dev, &chip->battery);
 	if (ret) {
 		dev_err(&client->dev, "failed: power supply register\n");
@@ -427,7 +470,6 @@ static int __devinit max17040_probe(struct i2c_client *client,
 		max17040_reset(client);
 	max17040_get_version(client);
 
-	INIT_DELAYED_WORK_DEFERRABLE(&chip->work, max17040_work);
 	schedule_delayed_work(&chip->work, MAX17040_DELAY);
 
 	if (HAS_ALERT_INTERRUPT(chip->ver) && chip->pdata->use_fuel_alert) {
