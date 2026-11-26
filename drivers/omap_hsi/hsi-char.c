@@ -467,7 +467,7 @@ static long  hsi_char_ioctl(struct file *file,
 		break;
 	case CS_GET_HSI_LATENCY:
 		if_hsi_get_hsi_latency(ch, &state);
-		if (copy_to_user((void __user *)arg, &fclock, sizeof(state)))
+		if (copy_to_user((void __user *)arg, &state, sizeof(state)))
 			ret = -EFAULT;
 		break;
 	case CS_SET_MPU_LATENCY:
@@ -478,7 +478,7 @@ static long  hsi_char_ioctl(struct file *file,
 		break;
 	case CS_GET_MPU_LATENCY:
 		if_hsi_get_mpu_latency(ch, &state);
-		if (copy_to_user((void __user *)arg, &fclock, sizeof(state)))
+		if (copy_to_user((void __user *)arg, &state, sizeof(state)))
 			ret = -EFAULT;
 		break;
 	default:
