@@ -1149,7 +1149,7 @@ static void check_process_timers(struct task_struct *tsk,
 void posix_cpu_timer_schedule(struct k_itimer *timer)
 {
 	struct task_struct *p = timer->it.cpu.task;
-	union cpu_time_count now;
+	union cpu_time_count now = { .sched = 0 };
 
 	if (unlikely(p == NULL))
 		/*
