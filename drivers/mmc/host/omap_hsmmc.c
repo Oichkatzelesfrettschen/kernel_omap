@@ -391,7 +391,6 @@ static int omap_hsmmc_set_power(struct device *dev, int slot, int power_on,
 {
 	struct omap_hsmmc_host *host =
 		platform_get_drvdata(to_platform_device(dev));
-	struct mmc_ios *ios = &host->mmc->ios;
 	int ret = 0;
 	u32 ac12 = 0;
 
@@ -425,8 +424,11 @@ static int omap_hsmmc_set_power(struct device *dev, int slot, int power_on,
 	 * eMMC cards it represents VccQ.  Sometimes transceivers or SDIO
 	 * chips/cards need an interface voltage rail too.
 	 */
+	dev_info(dev, "set_power on=%d vdd=%d vcc_en=%d uV=%d\n", power_on, vdd_iopower,
+		 host->vcc ? regulator_is_enabled(host->vcc) : -1,
+		 host->vcc ? regulator_get_voltage(host->vcc) : -1);
 	if (power_on) {
-		ret = mmc_regulator_set_ocr(host->mmc, host->vcc, ios->vdd);
+		ret = mmc_regulator_set_ocr(host->mmc, host->vcc, vdd_iopower);
 		/* Enable interface voltage rail, if needed */
 		if (host->vcc_aux) {
 			ac12 = OMAP_HSMMC_READ(host->base, AC12);

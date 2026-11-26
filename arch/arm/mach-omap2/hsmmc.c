@@ -164,15 +164,23 @@ static void omap4_hsmmc1_after_set_reg(struct device *dev, int slot,
 		reg |= (OMAP4_MMC1_PBIASLITE_PWRDNZ_MASK |
 			OMAP4_MMC1_PWRDNZ_MASK);
 		omap4_ctrl_pad_writel(reg, control_pbias_offset);
+		pr_info("hsmmc1: pbias write 0x%08x vdd %d\n", reg, vdd);
 
+		/*
+		 * VMODE_ERROR can assert after the first read; poll the
+		 * whole 5 ms settle window and stop only on an error.
+		 */
 		timeout = jiffies + msecs_to_jiffies(5);
 		do {
 			reg = omap4_ctrl_pad_readl(control_pbias_offset);
-			if (!(reg & OMAP4_MMC1_PBIASLITE_VMODE_ERROR_MASK))
+			if (reg & OMAP4_MMC1_PBIASLITE_VMODE_ERROR_MASK)
 				break;
 			usleep_range(100, 200);
 		} while (!time_after(jiffies, timeout));
 
+		pr_info("hsmmc1: pbias after poll 0x%08x\n", reg);
+		msleep(5);
+		pr_info("hsmmc1: pbias +5ms 0x%08x\n", omap4_ctrl_pad_readl(control_pbias_offset));
 		if (reg & OMAP4_MMC1_PBIASLITE_VMODE_ERROR_MASK) {
 			pr_err("Pbias Voltage is not same as LDO\n");
 			/* Caution : On VMODE_ERROR Power Down MMC IO */
