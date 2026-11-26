@@ -1454,7 +1454,7 @@ int ti_hdmi_4xxx_set_av_mute(struct hdmi_ip_data *ip_data, u8 av_mute_state)
 
 	WR_REG_32(av_base, HDMI_CORE_AV_CP_BYTE1, av_mute_state);
 	if (hdmi_wait_for_bit_change(av_base, HDMI_CORE_AV_AUDO_TXSTAT,
-						    2, 2, val) == val);
+						    2, 2, val) != val)
 		r = -ETIMEDOUT;
 
 	REG_FLD_MOD(av_base, HDMI_CORE_AV_PB_CTRL2, 0x3, 3, 2);
