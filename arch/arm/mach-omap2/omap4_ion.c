@@ -107,7 +107,11 @@ void __init omap4_ion_init(void)
 		omap4_ion_heap_tiler_mem_size = 0;
 		omap4_ion_heap_nonsec_tiler_mem_size = 0;
 	} else {
-#ifdef CONFIG_USE_AMAZON_DUCATI
+#if defined(CONFIG_ION_OMAP_TILER_DYNAMIC_ALLOC)
+		omap4_ion_heap_secure_input_size = 0;
+		omap4_ion_heap_tiler_mem_size = 0;
+		omap4_ion_heap_nonsec_tiler_mem_size = 0;
+#elif defined(CONFIG_USE_AMAZON_DUCATI)
 		omap4_ion_heap_secure_input_size = (SZ_1M * 10);
 		omap4_ion_heap_tiler_mem_size = (SZ_1M * 51);
 		omap4_ion_heap_nonsec_tiler_mem_size = SZ_4K;
