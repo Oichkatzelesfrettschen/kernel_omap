@@ -368,7 +368,17 @@ omap_hsi_fill_default_pads(struct hsi_platform_data *pdata)
  */
 static struct hsi_port_ctx omap_hsi_port_ctx[] = {
 	[0] = {
+#ifdef CONFIG_MACH_TUNA
+	       /*
+	        * The tuna XMM6260 modem sits on HSI port 1; port 2 pads include
+	        * usbb2_ulpitll_stp, which tuna uses as gpio 158 (emmc_en), and
+	        * muxing them for HSI cuts the eMMC supply enable.
+	        */
+	       .port_number = 1,
+	       .hst.flow = HSI_FLOW_SYNCHRONIZED,
+#else
 	       .port_number = 2,
+#endif
 	       .hst.mode = HSI_MODE_FRAME,
 	       .hst.frame_size = HSI_FRAMESIZE_DEFAULT,
 	       .hst.divisor = HSI_DIVISOR_DEFAULT,
@@ -395,7 +405,11 @@ static struct hsi_platform_data omap_hsi_platform_data = {
 	.num_ports = ARRAY_SIZE(omap_hsi_port_ctx),
 	.hsi_gdd_chan_count = HSI_HSI_DMA_CHANNEL_MAX,
 	.default_hsi_fclk = HSI_DEFAULT_FCLK,
+#ifdef CONFIG_MACH_TUNA
+	.fifo_mapping_strategy = HSI_FIFO_MAPPING_ALL_PORT1,
+#else
 	.fifo_mapping_strategy = HSI_FIFO_MAPPING_ALL_PORT2,
+#endif
 	.ctx = &omap_hsi_ctrl_ctx,
 	.ssi_cawake_gpio = -1, /* If using SSI, define CAWAKE GPIO used here */
 	.device_enable = omap_device_enable,
