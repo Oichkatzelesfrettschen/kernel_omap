@@ -218,6 +218,11 @@ struct omap_temp_sensor {
 	/* for hotspot extrapolation */
 	int				slope;
 	int				constant;
+	/* TSHUT value the driver programmed, the last value read, and counters */
+	u32				tshut_expected;
+	u32				tshut_seen;
+	unsigned int			tshut_fixups;
+	bool				tshut_refused;
 };
 
 /**
@@ -274,6 +279,8 @@ int omap_bandgap_read_temperature(struct omap_bandgap *bg_ptr, int id,
 int omap_bandgap_set_sensor_data(struct omap_bandgap *bg_ptr, int id,
 				void *data);
 void *omap_bandgap_get_sensor_data(struct omap_bandgap *bg_ptr, int id);
+int omap_bandgap_tshut_verify(struct omap_bandgap *bg_ptr, int id,
+			      const char *why);
 
 #ifdef CONFIG_OMAP4_BG_TEMP_SENSOR_DATA
 extern struct omap_bandgap_data omap4460_data;

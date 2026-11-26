@@ -385,6 +385,38 @@ int temp_sensor_configure_tcold(struct omap_bandgap *bg_ptr, int id,
 	return temp_sensor_unmask_interrupts(bg_ptr, id, hot, t_cold);
 }
 
+/*
+ * Writes the TSHUT window, reads it back and records the value as the one to
+ * hold. Returns -EBUSY when the read-back differs from the written value.
+ */
+static int tshut_write(struct omap_bandgap *bg_ptr, int id, u32 val,
+		       const char *why)
+{
+	struct device *cdev = bg_ptr->dev->parent;
+	struct omap_temp_sensor *s = &bg_ptr->conf->sensors[id];
+	u32 rb = 0;
+	int err;
+
+	err = omap_control_writel(cdev, val, s->registers->tshut_threshold);
+	err |= omap_control_readl(cdev, s->registers->tshut_threshold, &rb);
+	s->tshut_expected = val;
+	s->tshut_seen = rb;
+	if (printk_ratelimit())
+		dev_info(bg_ptr->dev, "tshut write (%s) 0x%08x, read-back 0x%08x\n",
+			 why, val, rb);
+	if (err)
+		return -EIO;
+	if (rb != val) {
+		if (printk_ratelimit())
+			dev_warn(bg_ptr->dev,
+				 "tshut read-back 0x%08x differs from written 0x%08x\n",
+				 rb, val);
+		return -EBUSY;
+	}
+
+	return 0;
+}
+
 /* This is Tshut config. Call it only if HAS(TSHUT_CONFIG) is set */
 static int temp_sensor_configure_tshut(struct omap_bandgap *bg_ptr,
 				       int id, int tshut_cold, int tshut_hot)
@@ -416,8 +448,8 @@ static int temp_sensor_configure_tshut(struct omap_bandgap *bg_ptr,
 							tsr->tshut_cold_mask;
 	reg_val |= (tshut_hot << __ffs(tsr->tshut_hot_mask)) &
 							tsr->tshut_hot_mask;
-	err = omap_control_writel(cdev, reg_val, tsr->tshut_threshold);
-	if (err) {
+	err = tshut_write(bg_ptr, id, reg_val, "probe");
+	if (err == -EIO) {
 		dev_err(bg_ptr->dev, "failed to reprogram tshut thot\n");
 		return -EIO;
 	}
@@ -1220,6 +1252,64 @@ int __devexit omap_bandgap_remove(struct platform_device *pdev)
 	return 0;
 }
 
+/**
+ * omap_bandgap_tshut_verify() - compare TSHUT with the programmed window
+ * @why: event that precedes the check, for the log line
+ *
+ * Reads the register, logs a change, and rewrites the programmed value once
+ * per change. A rewrite that reads back different marks the register as
+ * owned by another agent, which later calls report without rewriting. Safe
+ * from the cpuidle path: no sleeping calls.
+ *
+ * Returns 0 when the register holds the programmed value, -EBUSY when it
+ * does not, and a negative errno on an access failure.
+ */
+int omap_bandgap_tshut_verify(struct omap_bandgap *bg_ptr, int id,
+			      const char *why)
+{
+	struct device *cdev;
+	struct omap_temp_sensor *s;
+	u32 cur = 0;
+	int err;
+
+	if (!bg_ptr || omap_bandgap_validate(bg_ptr, id))
+		return -EINVAL;
+	s = &bg_ptr->conf->sensors[id];
+	if (!OMAP_BANDGAP_HAS(bg_ptr, TSHUT_CONFIG) || !s->tshut_expected)
+		return 0;
+
+	cdev = bg_ptr->dev->parent;
+	err = omap_control_readl(cdev, s->registers->tshut_threshold, &cur);
+	if (err)
+		return err;
+	if (cur == s->tshut_expected) {
+		s->tshut_refused = false;
+		s->tshut_seen = cur;
+		return 0;
+	}
+	if (cur != s->tshut_seen) {
+		s->tshut_seen = cur;
+		if (printk_ratelimit())
+			dev_warn(bg_ptr->dev,
+				 "tshut changed before %s: read 0x%08x, programmed 0x%08x\n",
+				 why, cur, s->tshut_expected);
+	}
+	if (s->tshut_refused)
+		return -EBUSY;
+
+	s->tshut_fixups++;
+	err = tshut_write(bg_ptr, id, s->tshut_expected, why);
+	if (err == -EBUSY) {
+		s->tshut_refused = true;
+		dev_warn(bg_ptr->dev,
+			 "tshut rewrite not retained, effective value 0x%08x\n",
+			 s->tshut_seen);
+	}
+
+	return err;
+}
+EXPORT_SYMBOL_GPL(omap_bandgap_tshut_verify);
+
 #ifdef CONFIG_PM
 static int omap_bandgap_save_ctxt(struct omap_bandgap *bg_ptr)
 {
@@ -1276,8 +1366,12 @@ static int omap_bandgap_restore_ctxt(struct omap_bandgap *bg_ptr)
 		tsr = bg_ptr->conf->sensors[i].registers;
 
 		if (OMAP_BANDGAP_HAS(bg_ptr, TSHUT_CONFIG)) {
-			err |= omap_control_writel(cdev, rval->tshut_threshold,
-							tsr->tshut_threshold);
+			struct omap_temp_sensor *s = &bg_ptr->conf->sensors[i];
+
+			if (tshut_write(bg_ptr, i,
+					s->tshut_expected ?: rval->tshut_threshold,
+					"resume") == -EIO)
+				err |= -EIO;
 		} else if (OMAP_BANDGAP_HAS(bg_ptr, TSHUT_CONFIG_ONCE)) {
 			err |= omap_control_readl(cdev, tsr->tshut_threshold,
 						  &val);
@@ -1411,6 +1505,9 @@ void omap_bandgap_resume_after_idle(void)
 			omap_bandgap_force_single_read(g_bg_ptr, i);
 
 		enable_continuous_mode(g_bg_ptr);
+
+		for (i = 0; i < g_bg_ptr->conf->sensor_count; i++)
+			omap_bandgap_tshut_verify(g_bg_ptr, i, "idle exit");
 
 		g_bg_ptr->bg_clk_idle = false;
 	}
