@@ -889,10 +889,23 @@ struct dev_pm_domain omap_device_pm_domain = {
  * platform_device_register() on the underlying platform_device.
  * Returns the return value of platform_device_register().
  */
+/*
+ * Parent of every omap_device in sysfs.  Android userspace on tuna (fstab,
+ * init scripts, ueventd by-name links and the vendor RIL) names block
+ * devices /dev/block/platform/omap/omap_hsmmc.0/..., the path the 3.0 kernel
+ * produced; PM code identifies omap_devices by pm_domain, not by this parent.
+ */
+static struct device omap_device_parent = {
+	.init_name	= "omap",
+	.parent		= &platform_bus,
+};
+
 int omap_device_register(struct platform_device *pdev)
 {
 	pr_debug("omap_device: %s: registering\n", pdev->name);
 
+	if (!pdev->dev.parent)
+		pdev->dev.parent = &omap_device_parent;
 	pdev->dev.pm_domain = &omap_device_pm_domain;
 	return platform_device_add(pdev);
 }
@@ -1309,6 +1322,10 @@ static struct notifier_block platform_nb = {
 static int __init omap_device_init(void)
 {
 	int ret;
+
+	ret = device_register(&omap_device_parent);
+	if (ret)
+		return ret;
 
 	bus_register_notifier(&platform_bus_type, &platform_nb);
 
