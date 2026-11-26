@@ -1504,10 +1504,22 @@ void omap_bandgap_resume_after_idle(void)
 		for (i = 0; i < g_bg_ptr->conf->sensor_count; i++)
 			omap_bandgap_force_single_read(g_bg_ptr, i);
 
-		enable_continuous_mode(g_bg_ptr);
+		/*
+		 * Powering the sensor up reloads the TSHUT hot field from its
+		 * reset value (OMAP4460: 0x37a, 109.8 C); the cold field keeps
+		 * its value. Program the window again on every idle exit.
+		 */
+		for (i = 0; i < g_bg_ptr->conf->sensor_count; i++) {
+			struct omap_temp_sensor *s = &g_bg_ptr->conf->sensors[i];
 
-		for (i = 0; i < g_bg_ptr->conf->sensor_count; i++)
-			omap_bandgap_tshut_verify(g_bg_ptr, i, "idle exit");
+			if (OMAP_BANDGAP_HAS(g_bg_ptr, TSHUT_CONFIG) &&
+			    s->tshut_expected)
+				omap_control_writel(g_bg_ptr->dev->parent,
+						    s->tshut_expected,
+						    s->registers->tshut_threshold);
+		}
+
+		enable_continuous_mode(g_bg_ptr);
 
 		g_bg_ptr->bg_clk_idle = false;
 	}
