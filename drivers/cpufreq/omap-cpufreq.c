@@ -27,6 +27,7 @@
 #include <linux/module.h>
 #include <linux/thermal_framework.h>
 #include <linux/omap4_duty_cycle.h>
+#include <linux/omap_cpufreq_cap.h>
 
 #include <asm/smp_plat.h>
 #include <asm/cpu.h>
@@ -247,6 +248,54 @@ static inline void freq_table_free(void)
 	if (atomic_dec_and_test(&freq_table_users))
 		opp_free_cpufreq_table(mpu_dev, &freq_table);
 }
+
+/*
+ * Caps the MPU at the highest table frequency at or below @khz, or at the
+ * lowest table frequency when @khz lies below the table. A @khz of 0 or at
+ * or above max_freq lifts the cap. omap_cpufreq_scale() clamps every
+ * transition to max_thermal, so a lowered cap scales down at once and a
+ * raised cap returns the MPU to the governor's last target.
+ */
+void omap_thermal_set_cap(unsigned int khz)
+{
+	struct cpufreq_policy policy;
+	unsigned int cap = max_freq, below = 0, lowest = UINT_MAX, cur, f;
+	int i;
+
+	if (!omap_cpufreq_ready || !freq_table || !max_freq)
+		return;
+
+	if (khz && khz < max_freq) {
+		for (i = 0; freq_table[i].frequency != CPUFREQ_TABLE_END; i++) {
+			f = freq_table[i].frequency;
+			if (f == CPUFREQ_ENTRY_INVALID)
+				continue;
+			lowest = min(lowest, f);
+			if (f <= khz)
+				below = max(below, f);
+		}
+		cap = below ? below : lowest;
+	}
+
+	if (cpufreq_get_policy(&policy, 0))
+		return;
+
+	mutex_lock(&omap_cpufreq_lock);
+
+	max_thermal = cap;
+	if (!is_locked) {
+		cur = omap_getspeed(0);
+		if (cur > cap)
+			omap_cpufreq_scale(&policy, cap, cur,
+					   CPUFREQ_RELATION_L);
+		else if (current_target_freq > cur)
+			omap_cpufreq_scale(&policy, current_target_freq, cur,
+					   CPUFREQ_RELATION_L);
+	}
+
+	mutex_unlock(&omap_cpufreq_lock);
+}
+EXPORT_SYMBOL_GPL(omap_thermal_set_cap);
 
 #ifdef CONFIG_THERMAL_FRAMEWORK
 static unsigned int omap_thermal_lower_speed(void)
