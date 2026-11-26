@@ -1755,6 +1755,7 @@ static int s6e8aa0_enable(struct omap_dss_device *dssdev)
 	struct s6e8aa0_data *s6 = dev_get_drvdata(&dssdev->dev);
 	int ret;
 	unsigned long pclk;
+	bool handoff;
 
 	dev_dbg(&dssdev->dev, "enable\n");
 
@@ -1764,12 +1765,28 @@ static int s6e8aa0_enable(struct omap_dss_device *dssdev)
 		goto out;
 	}
 
+	/* power_on clears skip_init */
+	handoff = dssdev->skip_init;
+
 	ret = s6e8aa0_power_on(dssdev);
 	if (ret) {
 		dev_dbg(&dssdev->dev, "enable failed\n");
 		dssdev->state = OMAP_DSS_DISPLAY_DISABLED;
 	} else {
 		dssdev->state = OMAP_DSS_DISPLAY_ACTIVE;
+		/*
+		 * A bootloader-initialized panel skips dsi_enable_video_output(),
+		 * the only caller of dss_mgr_enable() on this path. Without it
+		 * apply.c never writes the overlay registers, and DISPC keeps
+		 * scanning the bootloader buffer.
+		 */
+		if (handoff) {
+			int r = dss_mgr_enable(dssdev->manager);
+
+			if (r)
+				dev_warn(&dssdev->dev,
+					 "manager enable after handoff failed: %d\n", r);
+		}
 	}
 
 	/* fixup pclk based on pll config */
