@@ -543,6 +543,8 @@ static int sar_layout_generate(void)
 		romend = rombase + SZ_8K;
 		rambase = OMAP54XX_SAR_RAM_BASE;
 		ramend = rambase + SAR_BANK4_OFFSET - 1;
+	} else {
+		return -ENODEV;
 	}
 
 	sarrom = ioremap(rombase, SZ_8K);

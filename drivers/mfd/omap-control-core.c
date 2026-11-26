@@ -238,7 +238,7 @@ static int omap_control_add_children(struct platform_device *pdev,
 	/* Bandgap */
 	if (pdata->has_bandgap) {
 		void *child_pdata = NULL;
-		int size;
+		int size = 0;
 
 		if (pdata->rev == 1) {
 			child_pdata = &omap4_bg_data;

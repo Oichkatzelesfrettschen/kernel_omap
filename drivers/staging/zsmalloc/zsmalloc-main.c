@@ -369,7 +369,7 @@ static struct page *alloc_zspage(struct size_class *class, gfp_t flags)
 	 */
 	error = -ENOMEM;
 	for (i = 0; i < class->zspage_order; i++) {
-		struct page *page, *prev_page;
+		struct page *page, *prev_page = NULL;
 
 		page = alloc_page(flags);
 		if (!page)
