@@ -41,6 +41,15 @@
 
 #define TF_PRIVILEGED_UID_GID 1000 /* Android system AID */
 
+#ifdef CONFIG_MACH_TUNA
+/*
+ * The tuna userland opens privileged sessions as tf_daemon (drmrpc) and
+ * keymaster (nobody with group drmrpc); the 3.0 driver admitted every
+ * caller that could open /dev/tf_driver, which is 0660 drmrpc.
+ */
+#define TF_TUNA_DRMRPC_GID 1026 /* Android drmrpc AID */
+#endif
+
 /*----------------------------------------------------------------------------
  * Management of the shared memory blocks.
  *
@@ -977,7 +986,12 @@ int tf_open_client_session(
 		if (connection->owner == TF_CONNECTION_OWNER_KERNEL) {
 			dprintk(KERN_DEBUG "tf_open_client_session: "
 				"TF_LOGIN_PRIVILEGED for kernel API\n");
-		} else if ((current_euid() != TF_PRIVILEGED_UID_GID) &&
+		} else if (
+#ifdef CONFIG_MACH_TUNA
+				!in_group_p(make_kgid(current_user_ns(),
+					TF_TUNA_DRMRPC_GID)) &&
+#endif
+				(current_euid() != TF_PRIVILEGED_UID_GID) &&
 				(current_egid() != TF_PRIVILEGED_UID_GID) &&
 				(current_euid() != 0) && (current_egid() != 0)) {
 			dprintk(KERN_ERR "tf_open_client_session: "
