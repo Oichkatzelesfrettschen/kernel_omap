@@ -94,6 +94,8 @@ EXPORT_SYMBOL(sec_class);
 #define GPIO_GPS_nRST	136
 #define GPIO_GPS_PWR_EN	137
 #define GPIO_GPS_UART_SEL	164
+/* The mcspi1_cs3 pad, which carries uart1_rts in mode 1 */
+#define GPIO_GPS_UART_RTS_PAD	140
 
 #define GPIO_MHL_SCL_18V	99
 #define GPIO_MHL_SDA_18V	98
@@ -293,6 +295,19 @@ static int uart1_rts_ctrl_write(struct file *file, const char __user *buffer,
 		return -EINVAL;
 	if (copy_from_user(buf, buffer, count))
 		return -EFAULT;
+
+	/*
+	 * The GSD4t samples RTS as its host-port strap at reset: the GPS
+	 * library writes "1" before pulsing nRST, which parks the pad in safe
+	 * mode with the pull-up, and "0" afterwards to hand it back to the
+	 * UART as uart1_rts.
+	 */
+	if (!strncmp(buf, "1", 1))
+		omap_mux_set_gpio(OMAP_PIN_INPUT_PULLUP | OMAP_MUX_MODE7,
+				  GPIO_GPS_UART_RTS_PAD);
+	else if (!strncmp(buf, "0", 1))
+		omap_mux_set_gpio(OMAP_PIN_OUTPUT | OMAP_MUX_MODE1,
+				  GPIO_GPS_UART_RTS_PAD);
 
 	return count;
 }
