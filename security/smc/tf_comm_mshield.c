@@ -30,6 +30,7 @@
 #include <linux/jiffies.h>
 #include <linux/dma-mapping.h>
 #include <linux/cpu.h>
+#include <linux/moduleparam.h>
 #include <mach/omap-secure.h>
 
 #include <asm/cacheflush.h>
@@ -75,6 +76,11 @@ u32 g_RPC_advancement;
 u32 g_RPC_parameters[4] = {0, 0, 0, 0};
 #endif
 u32 g_secure_task_id;
+#ifdef CONFIG_MACH_TUNA
+/* The tuna secure ROM loads the PA while CPU1 is offline. */
+static bool pa_load_cpu0_only;
+module_param(pa_load_cpu0_only, bool, 0444);
+#endif
 u32 g_service_end;
 
 /*
@@ -930,7 +936,8 @@ int tf_start(struct tf_comm *comm,
 	tf_set_current_time(comm);
 
 	/* Workaround for issue #6081 */
-/*	pdata->disable_nonboot_cpus(); */
+	if (pa_load_cpu0_only)
+		pdata->disable_nonboot_cpus();
 
 	/*
 	 * Start the SMC PA
@@ -1002,13 +1009,15 @@ loop:
 	ret = 0;
 
 	/* Workaround for issue #6081 */
-/*	pdata->enable_nonboot_cpus(); */
+	if (pa_load_cpu0_only)
+		pdata->enable_nonboot_cpus();
 
 	goto exit;
 
 error2:
 	/* Workaround for issue #6081 */
-/*	pdata->enable_nonboot_cpus(); */
+	if (pa_load_cpu0_only)
+		pdata->enable_nonboot_cpus();
 
 	spin_lock(&(comm->lock));
 	l1_shared_buffer = comm->l1_buffer;
