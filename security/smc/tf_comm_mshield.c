@@ -532,6 +532,18 @@ static u32 tf_rpc_init(struct tf_comm *comm)
 		__pa(comm->init_shared_buffer) + PAGE_SIZE);
 
 	protocol_version = comm->init_shared_buffer->protocol_version;
+	{
+		u32 *w = (u32 *)comm->init_shared_buffer;
+		u32 *l = (u32 *)comm->l1_buffer;
+
+		dmac_flush_range((void *)l, (void *)((u32)l + PAGE_SIZE));
+		outer_inv_range(__pa(l), __pa(l) + PAGE_SIZE);
+		pr_info("SMC dbg: init %08x %08x %08x %08x %08x %08x %08x %08x\n",
+			w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7]);
+		pr_info("SMC dbg: l1 %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x\n",
+			l[0], l[1], l[2], l[3], l[4], l[5], l[6], l[7],
+			l[8], l[9], l[10], l[11]);
+	}
 #else
 	protocol_version = comm->l1_buffer->protocol_version;
 #endif
@@ -584,6 +596,10 @@ int tf_rpc_execute(struct tf_comm *comm)
 	mutex_lock(&(comm->rpc_mutex));
 
 	rpc_command = tf_rpc_get_command(comm);
+	if (g_RPC_advancement == RPC_ADVANCEMENT_PENDING)
+		pr_info("SMC dbg: exec RPC r0-r3 %08x %08x %08x %08x\n",
+			g_RPC_parameters[0], g_RPC_parameters[1],
+			g_RPC_parameters[2], g_RPC_parameters[3]);
 
 	if (g_RPC_advancement == RPC_ADVANCEMENT_PENDING) {
 		switch (rpc_command) {
@@ -934,6 +950,9 @@ loop:
 	if (g_RPC_advancement == RPC_ADVANCEMENT_PENDING) {
 		dpr_info("%s: Executing CMD=0x%x\n",
 			__func__, tf_rpc_get_command(comm));
+		pr_info("SMC dbg: start RPC r0-r3 %08x %08x %08x %08x\n",
+			g_RPC_parameters[0], g_RPC_parameters[1],
+			g_RPC_parameters[2], g_RPC_parameters[3]);
 
 		switch (tf_rpc_get_command(comm)) {
 		case RPC_CMD_YIELD:
@@ -964,6 +983,14 @@ loop:
 	ret = tf_schedule_secure_world(comm);
 	if (ret != 0) {
 		pr_err("SMC: Error during PA initialization [0x%x]\n", ret);
+		{
+			u32 *w = (u32 *)comm->init_shared_buffer;
+
+			pr_info("SMC dbg: fail r0-r3 %08x %08x %08x %08x init %08x %08x %08x %08x descr %08x\n",
+				g_RPC_parameters[0], g_RPC_parameters[1],
+				g_RPC_parameters[2], g_RPC_parameters[3],
+				w[0], w[1], w[2], w[3], descr);
+		}
 		goto error2;
 	}
 
