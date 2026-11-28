@@ -188,6 +188,32 @@ static int _vq_interrupt_thread(struct _thread_data *d)
  * that indicates different events. Those values are deliberately very
  * big so they don't coincide with virtqueue indices.
  */
+/* hand a triggered vring index to the vring interrupt context */
+static void omap_rproc_queue_vq(struct omap_rproc *oproc, mbox_msg_t msg)
+{
+#ifdef CONFIG_USE_AMAZON_DUCATI
+	unsigned long flags;
+	int ret;
+
+	spin_lock_irqsave(&oproc->queue_lock, flags);
+	ret = kfifo_in(&oproc->queue_kfifo, &msg, 1);
+	spin_unlock_irqrestore(&oproc->queue_lock, flags);
+	if (ret == 1)
+		wake_up_process(oproc->queue_thread);
+#else
+	struct _thread_data *d;
+
+	d = kmalloc(sizeof(*d), GFP_KERNEL);
+	if (!d)
+		return;
+	d->rproc = oproc->rproc;
+	d->msg = msg;
+	atomic_inc(&oproc->thrd_cnt);
+	kthread_run((void *)_vq_interrupt_thread, d,
+				"vp_interrupt_thread");
+#endif
+}
+
 static int omap_rproc_mbox_callback(struct notifier_block *this,
 					unsigned long index, void *data)
 {
@@ -195,12 +221,7 @@ static int omap_rproc_mbox_callback(struct notifier_block *this,
 	struct omap_rproc *oproc = container_of(this, struct omap_rproc, nb);
 	struct device *dev = oproc->rproc->dev.parent;
 	const char *name = oproc->rproc->name;
-#ifdef CONFIG_USE_AMAZON_DUCATI
-	unsigned long flags;
-	int ret;
-#else
-	struct _thread_data *d;
-#endif
+	struct rproc_vdev *rvdev;
 
 	dev_dbg(dev, "mbox msg: 0x%x\n", msg);
 
@@ -223,28 +244,25 @@ static int omap_rproc_mbox_callback(struct notifier_block *this,
 		oproc->suspend_acked = msg == RP_MBOX_SUSPEND_ACK;
 		complete(&oproc->pm_comp);
 		break;
+	case RP_MBOX_PENDING_MSG:
+		/*
+		 * RPRC firmware signals a pending message without naming the
+		 * vring: poll the rx vring of each vproc.
+		 */
+		if (oproc->rproc->rprc) {
+			list_for_each_entry(rvdev, &oproc->rproc->rvdevs, node)
+				omap_rproc_queue_vq(oproc,
+						rvdev->vring[0].notifyid);
+			break;
+		}
+		/* fall through */
 	default:
 		if (msg >= RP_MBOX_END_MSG) {
 			dev_info(dev, "Dropping unknown message %x", msg);
 			return NOTIFY_DONE;
 		}
 
-#ifdef CONFIG_USE_AMAZON_DUCATI
-		spin_lock_irqsave(&oproc->queue_lock, flags);
-		ret = kfifo_in(&oproc->queue_kfifo, &msg, 1);
-		spin_unlock_irqrestore(&oproc->queue_lock, flags);
-		if (ret == 1)
-			wake_up_process(oproc->queue_thread);
-#else
-		d = kmalloc(sizeof(*d), GFP_KERNEL);
-		if (!d)
-			break;
-		d->rproc = oproc->rproc;
-		d->msg = msg;
-		atomic_inc(&oproc->thrd_cnt);
-		kthread_run((void *)_vq_interrupt_thread, d,
-					"vp_interrupt_thread");
-#endif
+		omap_rproc_queue_vq(oproc, msg);
 	}
 
 	return NOTIFY_DONE;
@@ -262,12 +280,11 @@ static void omap_rproc_kick(struct rproc *rproc, int vqid)
 		oproc->need_kick = true;
 		return;
 	}
-#ifdef CONFIG_USE_AMAZON_DUCATI
-	if (oproc->mbox == NULL) {
-		dev_warn(dev, "mbox not initialised yet. Skipping kick.\n");
+	/* before the first boot there is no mailbox; the boot kicks again */
+	if (IS_ERR_OR_NULL(oproc->mbox)) {
+		dev_dbg(dev, "mbox not initialised yet. Skipping kick.\n");
 		return;
 	}
-#endif
 	/* send the index of the triggered virtqueue in the mailbox payload */
 	ret = omap_mbox_msg_send(oproc->mbox, vqid);
 	if (ret)
@@ -362,6 +379,35 @@ static irqreturn_t omap_rproc_watchdog_isr(int irq, void *p)
  * was loaded, parsed successfully, and all of its resource requirements
  * were met.
  */
+/*
+ * RPRC firmware learns each vproc's buffer base from the mailbox before it
+ * runs: per vproc, in vproc order, READY, the physical base of its buffers
+ * and an echo request, then a kick of each vring for the buffers the host
+ * posted before boot.
+ */
+static int omap_rproc_rprc_handshake(struct omap_rproc *oproc)
+{
+	struct rproc_vdev *rvdev;
+	int i, ret = 0;
+
+	list_for_each_entry(rvdev, &oproc->rproc->rvdevs, node) {
+		mbox_msg_t msgs[] = {
+			RP_MBOX_READY,
+			(mbox_msg_t)rvdev->rprc_buf,
+			RP_MBOX_ECHO_REQUEST,
+			rvdev->vring[0].notifyid,
+			rvdev->vring[1].notifyid,
+		};
+
+		for (i = 0; i < ARRAY_SIZE(msgs) && !ret; i++)
+			ret = omap_mbox_msg_send(oproc->mbox, msgs[i]);
+		if (ret)
+			break;
+	}
+
+	return ret;
+}
+
 static int omap_rproc_start(struct rproc *rproc)
 {
 	struct omap_rproc *oproc = rproc->priv;
@@ -412,7 +458,10 @@ static int omap_rproc_start(struct rproc *rproc)
 	 * note that the reply will _not_ arrive immediately: this message
 	 * will wait in the mailbox fifo until the remote processor is booted.
 	 */
-	ret = omap_mbox_msg_send(oproc->mbox, RP_MBOX_ECHO_REQUEST);
+	if (rproc->rprc)
+		ret = omap_rproc_rprc_handshake(oproc);
+	else
+		ret = omap_mbox_msg_send(oproc->mbox, RP_MBOX_ECHO_REQUEST);
 	if (ret) {
 		dev_err(dev, "omap_mbox_msg_send failed: %d\n", ret);
 		goto put_mbox;
