@@ -43,7 +43,46 @@
 enum {
 	RPROC_VIRTIO_ALLOC_TYPE,
 	RPROC_VIRTIO_BUF_ADDR,
+	RPROC_VIRTIO_RPRC_INDEX,
 };
+
+/*
+ * RPRC firmware lays the 16-byte rpmsg header out as {u16 len, u16 flags,
+ * u32 src, u32 dst, u32 unused}; the payload follows at the same offset.
+ */
+struct rpmsg_hdr_rprc {
+	u16 len;
+	u16 flags;
+	u32 src;
+	u32 dst;
+	u32 unused;
+} __packed;
+
+static void rpmsg_hdr_from_rprc(struct rpmsg_hdr *msg)
+{
+	struct rpmsg_hdr_rprc in;
+
+	BUILD_BUG_ON(sizeof(in) != sizeof(*msg));
+	memcpy(&in, msg, sizeof(in));
+	msg->src = in.src;
+	msg->dst = in.dst;
+	msg->reserved = in.unused;
+	msg->len = in.len;
+	msg->flags = in.flags;
+}
+
+static void rpmsg_hdr_to_rprc(struct rpmsg_hdr *msg)
+{
+	struct rpmsg_hdr_rprc out = {
+		.len = msg->len,
+		.flags = msg->flags,
+		.src = msg->src,
+		.dst = msg->dst,
+		.unused = msg->reserved,
+	};
+
+	memcpy(msg, &out, sizeof(out));
+}
 
 int get_virtproc_id(struct virtproc_info *vrp)
 {
@@ -753,6 +792,9 @@ int rpmsg_send_offchannel_raw(struct rpmsg_channel *rpdev, u32 src, u32 dst,
 					msg, sizeof(*msg) + msg->len, true);
 #endif
 
+	if (vrp->rprc_index >= 0)
+		rpmsg_hdr_to_rprc(msg);
+
 	/* use a direct-mapped equivalent virtual address in case of carveout */
 	if (vrp->use_carveout) {
 		offset = ((unsigned long) msg) - ((unsigned long) vrp->rbufs);
@@ -924,6 +966,9 @@ static void rpmsg_recv_done(struct virtqueue *rvq)
 		return;
 	}
 
+	if (vrp->rprc_index >= 0)
+		rpmsg_hdr_from_rprc(msg);
+
 	dev_dbg(dev, "From: 0x%x, To: 0x%x, Len: %d, Flags: %d, Reserved: %d\n",
 					msg->src, msg->dst, msg->len,
 					msg->flags, msg->reserved);
@@ -1065,6 +1110,14 @@ static void rpmsg_ns_cb(struct rpmsg_channel *rpdev, void *data, int len,
 	/* don't trust the remote processor for null terminating the name */
 	msg->name[RPMSG_NAME_SIZE - 1] = '\0';
 
+	/*
+	 * RPRC firmware announces its OMX service as "rpmsg-omx" on each
+	 * core; the OMX driver matches one name per core.
+	 */
+	if (vrp->rprc_index >= 0 && !strcmp(msg->name, "rpmsg-omx"))
+		snprintf(msg->name, RPMSG_NAME_SIZE, "rpmsg-omx%d",
+							vrp->rprc_index);
+
 	dev_info(dev, "%sing channel %s addr 0x%x\n",
 			msg->flags & RPMSG_NS_DESTROY ? "destroy" : "creat",
 			msg->name, msg->addr);
@@ -1127,6 +1180,8 @@ static int rpmsg_probe(struct virtio_device *vdev)
 	/* retrieve the carveout configuration information */
 	vdev->config->get(vdev, RPROC_VIRTIO_ALLOC_TYPE,
 				&vrp->use_carveout, sizeof(vrp->use_carveout));
+	vdev->config->get(vdev, RPROC_VIRTIO_RPRC_INDEX,
+				&vrp->rprc_index, sizeof(vrp->rprc_index));
 
 	/* We expect two virtqueues, rx and tx (and in this order) */
 	err = vdev->config->find_vqs(vdev, 2, vqs, vq_cbs, names);
@@ -1203,6 +1258,25 @@ static int rpmsg_probe(struct virtio_device *vdev)
 			err = -ENOMEM;
 			goto free_coherent;
 		}
+	}
+
+	if (vrp->rprc_index >= 0) {
+		/*
+		 * RPRC firmware expects the host resource manager at local
+		 * address 100 on each core without announcing it, so the
+		 * host creates that channel itself.
+		 */
+		struct rpmsg_channel_info chinfo = {
+			.name = "rpmsg-resmgr",
+			.src = 100,
+			.dst = RPMSG_ADDR_ANY,
+		};
+
+		if (!__rpmsg_create_channel(vrp, &chinfo))
+			dev_err(&vdev->dev, "can't create the resmgr channel\n");
+
+		/* the rx buffers are posted: tell the remote processor */
+		virtqueue_kick(vrp->rvq);
 	}
 
 #ifdef CONFIG_USE_AMAZON_DUCATI

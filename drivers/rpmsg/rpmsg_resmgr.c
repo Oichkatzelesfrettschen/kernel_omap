@@ -618,6 +618,10 @@ static int rprm_probe(struct rpmsg_channel *rpdev)
 	char name[MAX_DENTRY_SIZE];
 	int ret = 0;
 
+	/* RPRC firmware speaks the res_type/acquire request protocol */
+	if (rpdev->vrp->rprc_index >= 0)
+		return -ENODEV;
+
 	rprm = kmalloc(sizeof *rprm, GFP_KERNEL);
 	if (!rprm) {
 		ret = -ENOMEM;

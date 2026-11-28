@@ -117,6 +117,8 @@ enum rpmsg_ns_flags {
  * @id:		unique system-wide index id for this vproc
  * @use_carveout: flag for using carveout for vring buffers.
  *		  default will use CMA pool, if not enabled.
+ * @rprc_index: position of this vproc in an RPRC image's fixed layout, or
+ *		-1; RPRC vprocs use the RPRC header layout and name service
  *
  * This structure stores the rpmsg state of a given virtio remote processor
  * device (there might be several virtio proc devices for each physical
@@ -137,6 +139,7 @@ struct virtproc_info {
 	struct rpmsg_endpoint *ns_ept;
 	int id;
 	int use_carveout;
+	int rprc_index;
 };
 
 /**
