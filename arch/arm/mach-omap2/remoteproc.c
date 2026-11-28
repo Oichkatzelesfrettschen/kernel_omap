@@ -217,6 +217,24 @@ static struct rproc_mem_pool_data *omap_rproc_get_pool_data(const char *name)
 }
 #endif
 
+static phys_addr_t omap4_ipu_carveout_base __initdata;
+static unsigned long omap4_ipu_carveout_size __initdata;
+
+/**
+ * omap_rproc_set_ipu_carveout() - place the OMAP4 IPU pool at a fixed address
+ * @base: physical base of the pool
+ * @size: size of the pool in bytes
+ *
+ * A board whose IPU firmware carries carveouts with fixed physical
+ * addresses calls this before omap_rproc_reserve_cma(), which then reserves
+ * @base and @size in place of OMAP4_RPROC_CMA_BASE_IPU and the Kconfig size.
+ */
+void __init omap_rproc_set_ipu_carveout(phys_addr_t base, unsigned long size)
+{
+	omap4_ipu_carveout_base = base;
+	omap4_ipu_carveout_size = size;
+}
+
 void __init omap_rproc_reserve_cma(int platform_type)
 {
 	int ret;
@@ -267,6 +285,10 @@ void __init omap_rproc_reserve_cma(int platform_type)
 		cma_addr = OMAP5_RPROC_CMA_BASE_IPU;
 	}
 #endif
+	if (platform_type == RPROC_CMA_OMAP4 && omap4_ipu_carveout_size) {
+		cma_addr = omap4_ipu_carveout_base;
+		cma_size = omap4_ipu_carveout_size;
+	}
 
 #ifdef CONFIG_REMOTEPROC_USE_CARVEOUT
 	/* memblock_remove for OMAP4's M3 "ducati" remote processor */

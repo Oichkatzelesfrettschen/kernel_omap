@@ -1177,10 +1177,21 @@ static void __init tuna_init(void)
 	omap_enable_smartreflex_on_init();
 }
 
+/*
+ * The tuna Ducati image (RPRC v2) declares its carveouts with fixed
+ * physical addresses, from IPC_VRING at 0xb3a00000 to the end of DATA at
+ * 0xba300000, and its IVA-HD address translation compiles in the DATA base
+ * 0xb4300000; the IPU pool therefore covers exactly that range.
+ */
+#define TUNA_IPU_CARVEOUT_BASE	0xb3a00000
+#define TUNA_IPU_CARVEOUT_SIZE	(SZ_1M * 105)
+
 static void __init tuna_reserve(void)
 {
 	omap_init_ram_size();
 	omap_ram_console_init(OMAP_RAM_CONSOLE_START_DEFAULT, OMAP_RAM_CONSOLE_SIZE_DEFAULT);
+	omap_rproc_set_ipu_carveout(TUNA_IPU_CARVEOUT_BASE,
+				    TUNA_IPU_CARVEOUT_SIZE);
 	omap_rproc_reserve_cma(RPROC_CMA_OMAP4);
 	tuna_android_display_setup();
 #ifdef CONFIG_ION_OMAP

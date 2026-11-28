@@ -72,10 +72,16 @@ struct omap_rproc_pdata {
 #if defined(CONFIG_OMAP_REMOTEPROC) || defined(CONFIG_OMAP_REMOTEPROC_MODULE)
 
 void __init omap_rproc_reserve_cma(int platform_type);
+void __init omap_rproc_set_ipu_carveout(phys_addr_t base, unsigned long size);
 
 #else
 
 static inline void __init omap_rproc_reserve_cma(int platform_type)
+{
+}
+
+static inline void __init omap_rproc_set_ipu_carveout(phys_addr_t base,
+							unsigned long size)
 {
 }
 
