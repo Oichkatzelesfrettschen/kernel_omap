@@ -39,6 +39,7 @@
  * @base: base address of the resource registers (will be mapped to the rproc
  *	  address space in the future)
  * @constraints: stores the constraints requested for the resource
+ * @src: client endpoint holding the resource (RPRC channels)
  */
 struct rprm_elem {
 	struct list_head next;
@@ -47,6 +48,7 @@ struct rprm_elem {
 	u32 id;
 	u32 base;
 	struct rprm_constraints_data constraints;
+	u32 src;
 };
 
 /**
@@ -56,6 +58,7 @@ struct rprm_elem {
  * @lock: protection
  * @dentry: debug entry
  * @rpdev: pointer to the channel of the connection.
+ * @rprc_conns: connected client endpoints (RPRC channels)
  */
 struct rprm {
 	struct list_head res_list;
@@ -63,6 +66,7 @@ struct rprm {
 	struct mutex lock;
 	struct dentry *dentry;
 	struct rpmsg_channel *rpdev;
+	struct idr rprc_conns;
 };
 
 /* default constraint values for removing constraints */
@@ -366,6 +370,305 @@ out:
 	return ret;
 }
 
+/*
+ * RPRC firmware speaks the earlier resource protocol: every message is a
+ * request {res_type, acquire, res_id, data}; connect, allocate and
+ * set-constraints get an ack {ret, res_type, res_id, base, data}; and each
+ * client endpoint connects before it allocates. Resource types are numbers,
+ * served here by the registered resources, and auxclk rates are in MHz.
+ */
+enum rprc_rprm_type {
+	RPRC_RPRM_GPTIMER	= 0,
+	RPRC_RPRM_IVAHD		= 1,
+	RPRC_RPRM_IVASEQ0	= 2,
+	RPRC_RPRM_IVASEQ1	= 3,
+	RPRC_RPRM_L3BUS		= 4,
+	RPRC_RPRM_ISS		= 5,
+	RPRC_RPRM_FDIF		= 6,
+	RPRC_RPRM_SL2IF		= 7,
+	RPRC_RPRM_AUXCLK	= 8,
+	RPRC_RPRM_REGULATOR	= 9,
+	RPRC_RPRM_GPIO		= 10,
+	RPRC_RPRM_SDMA		= 11,
+	RPRC_RPRM_IPU		= 12,
+	RPRC_RPRM_DSP		= 13,
+	RPRC_RPRM_I2C		= 14,
+	RPRC_RPRM_MAX,
+};
+
+enum rprc_rprm_action {
+	RPRC_RPRM_CONNECT		= 0,
+	RPRC_RPRM_REQ_ALLOC		= 1,
+	RPRC_RPRM_REQ_FREE		= 2,
+	RPRC_RPRM_DISCONNECT		= 3,
+	RPRC_RPRM_REQ_CONSTRAINTS	= 4,
+	RPRC_RPRM_REL_CONSTRAINTS	= 5,
+};
+
+struct rprc_rprm_request {
+	u32 res_type;
+	u32 acquire;
+	u32 res_id;
+	char data[];
+} __packed;
+
+struct rprc_rprm_ack {
+	u32 ret;
+	u32 res_type;
+	u32 res_id;
+	u32 base;
+	char data[];
+} __packed;
+
+/* auxclk request with rates in MHz; the other argument layouts match */
+struct rprc_rprm_auxclk {
+	u32 id;
+	u32 clk_rate;
+	u32 parent_src_clk;
+	u32 parent_src_clk_rate;
+} __packed;
+
+/* the SDMA request, {num_chs, s32 channels[16]}, is the largest */
+#define RPRC_RPRM_MAX_DATA	68
+#define RPRC_RPRM_RPROC_NAME	16
+/* res_id of an L3 bus request, which holds nothing */
+#define RPRC_RPRM_NULL_ID	0xffffffff
+
+static const struct {
+	const char *name;
+	u32 len;
+} rprc_rprm_types[RPRC_RPRM_MAX] = {
+	[RPRC_RPRM_GPTIMER]	= { "omap-gptimer", 8 },
+	[RPRC_RPRM_IVAHD]	= { "iva", 0 },
+	[RPRC_RPRM_IVASEQ0]	= { "iva_seq0", 0 },
+	[RPRC_RPRM_IVASEQ1]	= { "iva_seq1", 0 },
+	[RPRC_RPRM_L3BUS]	= { NULL, 0 },
+	[RPRC_RPRM_ISS]		= { "omap-iss", 0 },
+	[RPRC_RPRM_FDIF]	= { "omap-fdif", 0 },
+	[RPRC_RPRM_SL2IF]	= { "omap-sl2if", 0 },
+	[RPRC_RPRM_AUXCLK]	= { "omap-auxclk",
+				    sizeof(struct rprc_rprm_auxclk) },
+	[RPRC_RPRM_REGULATOR]	= { "regulator", 12 },
+	[RPRC_RPRM_GPIO]	= { "gpio", 4 },
+	[RPRC_RPRM_SDMA]	= { "omap-sdma", RPRC_RPRM_MAX_DATA },
+	[RPRC_RPRM_IPU]		= { "rproc", 0 },
+	[RPRC_RPRM_DSP]		= { "rproc", 0 },
+	[RPRC_RPRM_I2C]		= { "i2c", 4 },
+};
+
+static bool rprm_rprc_connected(struct rprm *rprm, u32 src)
+{
+	bool ret;
+
+	mutex_lock(&rprm->lock);
+	ret = idr_find(&rprm->rprc_conns, src) != NULL;
+	mutex_unlock(&rprm->lock);
+	return ret;
+}
+
+static int rprm_rprc_connect(struct rprm *rprm, u32 src)
+{
+	int ret, id;
+
+	mutex_lock(&rprm->lock);
+	if (idr_find(&rprm->rprc_conns, src)) {
+		ret = -EISCONN;
+		goto out;
+	}
+	if (!idr_pre_get(&rprm->rprc_conns, GFP_KERNEL)) {
+		ret = -ENOMEM;
+		goto out;
+	}
+	ret = idr_get_new_above(&rprm->rprc_conns, rprm, src, &id);
+	if (!ret && id != src) {
+		idr_remove(&rprm->rprc_conns, id);
+		ret = -EBUSY;
+	}
+out:
+	mutex_unlock(&rprm->lock);
+	return ret;
+}
+
+/* release every resource of a client endpoint, then forget the endpoint */
+static void rprm_rprc_disconnect(struct rprm *rprm, u32 src)
+{
+	struct rprm_elem *e, *tmp;
+	u32 id;
+
+	mutex_lock(&rprm->lock);
+	list_for_each_entry_safe(e, tmp, &rprm->res_list, next) {
+		if (e->src != src)
+			continue;
+		id = e->id;
+		if (!_resource_release(rprm, e))
+			idr_remove(&rprm->id_list, id);
+	}
+	idr_remove(&rprm->rprc_conns, src);
+	mutex_unlock(&rprm->lock);
+}
+
+/* is @res_id a resource that @src holds? */
+static struct rprm_elem *rprm_rprc_find(struct rprm *rprm, u32 src,
+							u32 res_id)
+{
+	struct rprm_elem *e;
+
+	mutex_lock(&rprm->lock);
+	e = idr_find(&rprm->id_list, res_id);
+	if (e && e->src != src)
+		e = NULL;
+	mutex_unlock(&rprm->lock);
+	return e;
+}
+
+/*
+ * Allocate the resource of an RPRC request. The registered resource
+ * receives its own argument layout and may update it in place (SDMA
+ * channel numbers, fixed regulator voltages); those updates return to the
+ * firmware in the ack.
+ */
+static int rprm_rprc_alloc(struct rprm *rprm, u32 src,
+				struct rprc_rprm_request *req, int len, u32 *base)
+{
+	u32 args[RPRC_RPRM_MAX_DATA / sizeof(u32)];
+	struct rprc_rprm_auxclk *aux;
+	struct rprm_elem *e;
+	u32 type = req->res_type;
+	int res_id, ret;
+	u32 alen = len;
+
+	if (type >= RPRC_RPRM_MAX || len != rprc_rprm_types[type].len)
+		return -EINVAL;
+
+	if (!rprc_rprm_types[type].name) {
+		req->res_id = RPRC_RPRM_NULL_ID;
+		return 0;
+	}
+
+	switch (type) {
+	case RPRC_RPRM_AUXCLK:
+		aux = (void *)req->data;
+		args[0] = aux->id;
+		args[1] = aux->clk_rate * 1000000;
+		args[2] = aux->parent_src_clk;
+		args[3] = aux->parent_src_clk_rate * 1000000;
+		break;
+	case RPRC_RPRM_IPU:
+	case RPRC_RPRM_DSP:
+		memset(args, 0, RPRC_RPRM_RPROC_NAME);
+		strlcpy((char *)args,
+			type == RPRC_RPRM_IPU ? "ipu_c0" : "dsp_c0",
+			RPRC_RPRM_RPROC_NAME);
+		alen = RPRC_RPRM_RPROC_NAME;
+		break;
+	default:
+		memcpy(args, req->data, len);
+	}
+
+	ret = rprm_resource_request(rprm, rprc_rprm_types[type].name,
+						&res_id, args, alen);
+	if (ret)
+		return ret;
+
+	mutex_lock(&rprm->lock);
+	e = idr_find(&rprm->id_list, res_id);
+	if (e) {
+		e->src = src;
+		*base = e->base;
+	}
+	mutex_unlock(&rprm->lock);
+
+	if (type != RPRC_RPRM_AUXCLK && type != RPRC_RPRM_IPU &&
+						type != RPRC_RPRM_DSP)
+		memcpy(req->data, args, len);
+	req->res_id = res_id;
+
+	return 0;
+}
+
+static void rprm_rprc_cb(struct rpmsg_channel *rpdev, void *data, int len,
+								u32 src)
+{
+	char ack_msg[sizeof(struct rprc_rprm_ack) + RPRC_RPRM_MAX_DATA];
+	struct rprc_rprm_ack *ack = (void *)ack_msg;
+	struct rprc_rprm_request *req = data;
+	struct device *dev = &rpdev->dev;
+	struct rprm *rprm = dev_get_drvdata(dev);
+	struct rprm_constraints_data *c;
+	int ret, r_sz = 0;
+	u32 base = 0;
+
+	len -= sizeof(*req);
+	if (len < 0 || len > RPRC_RPRM_MAX_DATA) {
+		dev_err(dev, "bad RPRC resmgr message from %u\n", src);
+		return;
+	}
+
+	dev_dbg(dev, "RPRC resmgr from %u: type %u action %u id %u len %d\n",
+		src, req->res_type, req->acquire, req->res_id, len);
+
+	switch (req->acquire) {
+	case RPRC_RPRM_CONNECT:
+		ret = rprm_rprc_connect(rprm, src);
+		break;
+	case RPRC_RPRM_REQ_ALLOC:
+		if (!rprm_rprc_connected(rprm, src)) {
+			ret = -ENOTCONN;
+			break;
+		}
+		r_sz = len;
+		ret = rprm_rprc_alloc(rprm, src, req, len, &base);
+		break;
+	case RPRC_RPRM_REQ_FREE:
+		if (req->res_id == RPRC_RPRM_NULL_ID)
+			return;
+		if (!rprm_rprc_find(rprm, src, req->res_id))
+			ret = -ENOENT;
+		else
+			ret = rprm_resource_release(rprm, req->res_id);
+		if (ret)
+			dev_err(dev, "RPRC release of %u failed: %d\n",
+							req->res_id, ret);
+		/* no ack for a release */
+		return;
+	case RPRC_RPRM_DISCONNECT:
+		rprm_rprc_disconnect(rprm, src);
+		return;
+	case RPRC_RPRM_REQ_CONSTRAINTS:
+	case RPRC_RPRM_REL_CONSTRAINTS:
+		if (len != sizeof(*c) ||
+				!rprm_rprc_find(rprm, src, req->res_id)) {
+			ret = -EINVAL;
+		} else {
+			c = (void *)req->data;
+			ret = rprm_update_constraints(rprm, req->res_id, c,
+				req->acquire == RPRC_RPRM_REQ_CONSTRAINTS);
+			r_sz = len;
+		}
+		/* no ack when removing constraints */
+		if (req->acquire == RPRC_RPRM_REL_CONSTRAINTS)
+			return;
+		break;
+	default:
+		dev_err(dev, "unknown RPRC resmgr action %u\n", req->acquire);
+		ret = -EINVAL;
+	}
+
+	if (ret)
+		dev_err(dev, "RPRC resmgr action %u type %u from %u: %d\n",
+				req->acquire, req->res_type, src, ret);
+
+	ack->ret = ret;
+	ack->res_type = req->res_type;
+	ack->res_id = req->res_id;
+	ack->base = base;
+	memcpy(ack->data, req->data, r_sz);
+
+	ret = rpmsg_sendto(rpdev, ack, sizeof(*ack) + r_sz, src);
+	if (ret)
+		dev_err(dev, "RPRC resmgr ack failed: %d\n", ret);
+}
+
 static void rprm_cb(struct rpmsg_channel *rpdev, void *data, int len,
 			void *priv, u32 src)
 {
@@ -382,6 +685,11 @@ static void rprm_cb(struct rpmsg_channel *rpdev, void *data, int len,
 	int res_id;
 	int ret;
 	bool set;
+
+	if (rpdev->vrp->rprc_index >= 0) {
+		rprm_rprc_cb(rpdev, data, len, src);
+		return;
+	}
 
 	dev_dbg(dev, "resmgr msg from %u and len %d\n" , src, len);
 
@@ -616,11 +924,8 @@ static int rprm_probe(struct rpmsg_channel *rpdev)
 	struct rprm_ack ack;
 	struct rproc *rproc = vdev_to_rproc(rpdev->vrp->vdev);
 	char name[MAX_DENTRY_SIZE];
+	bool rprc = rpdev->vrp->rprc_index >= 0;
 	int ret = 0;
-
-	/* RPRC firmware speaks the res_type/acquire request protocol */
-	if (rpdev->vrp->rprc_index >= 0)
-		return -ENODEV;
 
 	rprm = kmalloc(sizeof *rprm, GFP_KERNEL);
 	if (!rprm) {
@@ -630,6 +935,7 @@ static int rprm_probe(struct rpmsg_channel *rpdev)
 
 	mutex_init(&rprm->lock);
 	idr_init(&rprm->id_list);
+	idr_init(&rprm->rprc_conns);
 	/*
 	 * Beside the idr we create a linked list, that way we can cleanup the
 	 * resources allocated in reverse order as they were requested which
@@ -648,6 +954,10 @@ static int rprm_probe(struct rpmsg_channel *rpdev)
 	rprm->dentry = debugfs_create_file(name, 0400, rproc->dbg_dir, rprm,
 							&rprm_dbg_ops);
 out:
+	/* RPRC clients connect per endpoint, through their own messages */
+	if (rprc)
+		return ret;
+
 	/* send a message back to ack the connection */
 	ack.action = RPRM_CONNECT;
 	ack.ret = ret;
@@ -670,6 +980,8 @@ static void __devexit rprm_remove(struct rpmsg_channel *rpdev)
 
 	idr_remove_all(&rprm->id_list);
 	idr_destroy(&rprm->id_list);
+	idr_remove_all(&rprm->rprc_conns);
+	idr_destroy(&rprm->rprc_conns);
 	mutex_unlock(&rprm->lock);
 	if (rprm->dentry)
 		debugfs_remove(rprm->dentry);
