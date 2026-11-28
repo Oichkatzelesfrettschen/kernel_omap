@@ -45,6 +45,7 @@
 #include <linux/delay.h>
 #include <linux/vmalloc.h>
 #include <linux/rproc_drm.h>
+#include <linux/rpmsg.h>
 
 #include "remoteproc_internal.h"
 
@@ -779,6 +780,45 @@ void rproc_free_memory(struct rproc *rproc, u32 size, void *va, dma_addr_t dma)
 	}
 }
 
+/*
+ * An RPRC vring sits at a fixed offset after its vdev's buffers, and its
+ * notify id is the virtqueue index the firmware expects in the mailbox:
+ * two per vdev, in vdev order.
+ */
+static int rproc_rprc_alloc_vring(struct rproc_vdev *rvdev, int i, int size)
+{
+	struct rproc *rproc = rvdev->rproc;
+	struct rproc_vring *vring = &rvdev->vring[i];
+	int wanted = rvdev->rprc_index * RVDEV_NUM_VRINGS + i;
+	struct device *dev = &rproc->dev;
+	int ret, notifyid;
+	dma_addr_t dma;
+
+	if (size > RPROC_RPRC_RING_SIZE) {
+		dev_err(dev, "vring%d needs 0x%x bytes, the RPRC layout has 0x%x\n",
+				i, size, (u32)RPROC_RPRC_RING_SIZE);
+		return -EINVAL;
+	}
+
+	ret = idr_get_new_above(&rproc->notifyids, vring, wanted, &notifyid);
+	if (ret) {
+		dev_err(dev, "idr_get_new_above failed: %d\n", ret);
+		return ret;
+	}
+	if (notifyid != wanted) {
+		dev_err(dev, "vring notify id %d is taken\n", wanted);
+		idr_remove(&rproc->notifyids, notifyid);
+		return -EBUSY;
+	}
+
+	dma = rvdev->rprc_buf + RPROC_RPRC_BUFS_SPACE + i * RPROC_RPRC_RING_SIZE;
+	vring->va = (__force void *)rproc->rprc_ipc + (dma - rproc->rprc_ipc_pa);
+	vring->dma = dma;
+	vring->notifyid = notifyid;
+
+	return 0;
+}
+
 int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 {
 	struct rproc *rproc = rvdev->rproc;
@@ -795,6 +835,9 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 		dev_err(dev, "idr_pre_get failed\n");
 		return -ENOMEM;
 	}
+
+	if (rproc->rprc)
+		return rproc_rprc_alloc_vring(rvdev, i, size);
 
 	/*
 	 * Allocate non-cacheable memory for the vring. In the future
@@ -865,7 +908,9 @@ void rproc_free_vring(struct rproc_vring *rvring)
 	int size = PAGE_ALIGN(vring_size(rvring->len, rvring->align));
 	struct rproc *rproc = rvring->rvdev->rproc;
 
-	rproc_free_memory(rproc, size, rvring->va, rvring->dma);
+	/* RPRC vrings live in the fixed mapping, released with the rproc */
+	if (!rproc->rprc)
+		rproc_free_memory(rproc, size, rvring->va, rvring->dma);
 	idr_remove(&rproc->notifyids, rvring->notifyid);
 }
 
@@ -1747,25 +1792,485 @@ static int rproc_fw_sanity_check(struct rproc *rproc, const struct firmware *fw)
 }
 
 /*
- * take a firmware and boot a remote processor with it.
+ * RPRC v2 firmware container: a header with a free-form text block, then
+ * sections {type, da, len, content}. The first section holds the resource
+ * entries and is itself copied to its device address; text and data
+ * sections are copied to theirs. The MMU table and signature sections serve
+ * secure boot only.
  */
-static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
+#define RPRC_MAGIC	"RPRC"
+#define RPRC_VERSION	2
+
+struct rprc_header {
+	char magic[4];
+	u32 version;
+	u32 header_len;
+	char header[0];
+} __packed;
+
+struct rprc_section {
+	u32 type;
+	u64 da;
+	u32 len;
+	char content[0];
+} __packed;
+
+struct rprc_resource {
+	u32 type;
+	u64 da;
+	u64 pa;
+	u32 len;
+	u32 reserved;
+	u8 name[48];
+} __packed;
+
+enum rprc_section_type {
+	RPRC_SECTION_RESOURCE	= 0,
+	RPRC_SECTION_TEXT	= 1,
+	RPRC_SECTION_DATA	= 2,
+	RPRC_SECTION_MMU	= 3,
+	RPRC_SECTION_SIGNATURE	= 4,
+};
+
+enum rprc_resource_type {
+	RPRC_RSC_CARVEOUT	= 0,
+	RPRC_RSC_DEVMEM		= 1,
+	RPRC_RSC_DEVICE		= 2,
+	RPRC_RSC_IRQ		= 3,
+	RPRC_RSC_TRACE		= 4,
+	RPRC_RSC_BOOTADDR	= 5,
+	RPRC_RSC_CRASHDUMP	= 6,
+};
+
+static bool rproc_is_rprc(const struct firmware *fw)
+{
+	return fw && fw->size >= sizeof(struct rprc_header) &&
+		!memcmp(fw->data, RPRC_MAGIC, sizeof(RPRC_MAGIC) - 1);
+}
+
+/*
+ * Return the first section of an RPRC image and the byte count from it to
+ * the end of the image, or NULL if the header is not a valid v2 header.
+ */
+static const struct rprc_section *
+rproc_rprc_sections(struct rproc *rproc, const struct firmware *fw,
+							size_t *left)
+{
+	const struct rprc_header *hdr = (const void *)fw->data;
+	struct device *dev = &rproc->dev;
+
+	if (hdr->version != RPRC_VERSION) {
+		dev_err(dev, "unsupported RPRC version %u\n", hdr->version);
+		return NULL;
+	}
+
+	if (hdr->header_len > fw->size - sizeof(*hdr)) {
+		dev_err(dev, "RPRC header is truncated\n");
+		return NULL;
+	}
+
+	*left = fw->size - sizeof(*hdr) - hdr->header_len;
+	return (const void *)(hdr->header + hdr->header_len);
+}
+
+/*
+ * Step past @sec. Returns the next section, or NULL at the end of the
+ * image; a tail shorter than a section header is padding. Sets @err when
+ * @sec runs past the end of the image.
+ */
+static const struct rprc_section *
+rproc_rprc_next(struct rproc *rproc, const struct rprc_section *sec,
+						size_t *left, int *err)
+{
+	*left -= sizeof(*sec) + sec->len;
+	sec = (const void *)(sec->content + sec->len);
+	if (*left < sizeof(*sec))
+		return NULL;
+	if (sec->len > *left - sizeof(*sec)) {
+		dev_err(&rproc->dev, "RPRC section at da 0x%llx is truncated\n",
+							sec->da);
+		*err = -EINVAL;
+		return NULL;
+	}
+	return sec;
+}
+
+/* Return the resource section, which RPRC v2 places first */
+static const struct rprc_section *
+rproc_rprc_resources(struct rproc *rproc, const struct firmware *fw,
+							size_t *left)
+{
+	const struct rprc_section *sec = rproc_rprc_sections(rproc, fw, left);
+	struct device *dev = &rproc->dev;
+
+	if (!sec)
+		return NULL;
+
+	if (*left < sizeof(*sec) || sec->len > *left - sizeof(*sec) ||
+					sec->type != RPRC_SECTION_RESOURCE) {
+		dev_err(dev, "RPRC image does not start with its resources\n");
+		return NULL;
+	}
+
+	if (sec->len % sizeof(struct rprc_resource)) {
+		dev_err(dev, "RPRC resource section length 0x%x is not a multiple of %zu\n",
+				sec->len, sizeof(struct rprc_resource));
+		return NULL;
+	}
+
+	return sec;
+}
+
+static bool rproc_rprc_in_pool(struct rproc *rproc, u64 pa, u32 len)
+{
+	struct rproc_mem_pool *pool = rproc->memory_pool;
+
+	return pool && len && pa >= pool->mem_base &&
+		pa + len <= (u64)pool->mem_base + pool->mem_size;
+}
+
+/*
+ * Does the image declare a carveout that starts at @pa and spans at least
+ * @len bytes? The fixed rpmsg layout lives in such a carveout.
+ */
+static bool rproc_rprc_has_carveout(struct rproc *rproc,
+			const struct firmware *fw, phys_addr_t pa, u32 len)
+{
+	const struct rprc_resource *rsc;
+	const struct rprc_section *sec;
+	size_t left;
+	int i, n;
+
+	sec = rproc_rprc_resources(rproc, fw, &left);
+	if (!sec)
+		return false;
+
+	rsc = (const void *)sec->content;
+	n = sec->len / sizeof(*rsc);
+	for (i = 0; i < n; i++)
+		if (rsc[i].type == RPRC_RSC_CARVEOUT && rsc[i].pa == pa &&
+							rsc[i].len >= len)
+			return true;
+
+	return false;
+}
+
+static int rproc_rprc_add_mapping(struct rproc *rproc,
+			const struct rprc_resource *rsc, u32 type)
+{
+	struct rproc_mem_entry *mapping;
+
+	mapping = kzalloc(sizeof(*mapping), GFP_KERNEL);
+	if (!mapping)
+		return -ENOMEM;
+
+	mapping->dma = rsc->pa;
+	mapping->da = rsc->da;
+	mapping->len = rsc->len;
+	mapping->type = type;
+	list_add_tail(&mapping->node, &rproc->mappings);
+
+	return 0;
+}
+
+/* translate a device address inside a fixed carveout to its pa */
+static int rproc_rprc_da_to_pa(struct rproc *rproc, u64 da, u32 len,
+							phys_addr_t *pa)
+{
+	struct rproc_mem_entry *m;
+
+	list_for_each_entry(m, &rproc->mappings, node) {
+		if (m->type != RSC_CARVEOUT)
+			continue;
+		if (da < m->da || da + len > (u64)m->da + m->len)
+			continue;
+		*pa = m->dma + (da - m->da);
+		return 0;
+	}
+
+	return -EINVAL;
+}
+
+/*
+ * Expose a trace buffer through debugfs: the buffer gets its own small
+ * mapping, registered as a carveout so that rproc_handle_trace() finds it
+ * and rproc_resource_cleanup() unmaps it.
+ */
+static int rproc_rprc_add_trace(struct rproc *rproc,
+				const struct rprc_resource *rsc)
+{
+	struct rproc_mem_entry *carveout;
+	struct fw_rsc_trace trace;
+	phys_addr_t pa;
+	int ret;
+
+	if (rproc_rprc_da_to_pa(rproc, rsc->da, rsc->len, &pa))
+		return -EINVAL;
+
+	carveout = kzalloc(sizeof(*carveout), GFP_KERNEL);
+	if (!carveout)
+		return -ENOMEM;
+
+	carveout->va = (__force void *)ioremap_nocache(pa, rsc->len);
+	if (!carveout->va) {
+		kfree(carveout);
+		return -ENOMEM;
+	}
+	carveout->dma = pa;
+	carveout->da = rsc->da;
+	carveout->len = rsc->len;
+	list_add_tail(&carveout->node, &rproc->carveouts);
+
+	memset(&trace, 0, sizeof(trace));
+	trace.da = rsc->da;
+	trace.len = rsc->len;
+	ret = rproc_handle_trace(rproc, &trace, sizeof(trace));
+
+	return ret;
+}
+
+/*
+ * Handle the RPRC resource entries: fixed carveouts inside the IPU pool and
+ * device memory become IOMMU mappings, trace buffers become debugfs
+ * entries, and the first boot address is recorded. A carveout outside the
+ * pool stays unmapped, so the remote processor faults on it instead of
+ * reaching memory the kernel owns.
+ */
+static int rproc_rprc_handle_resources(struct rproc *rproc,
+					const struct rprc_section *sec)
+{
+	const struct rprc_resource *rsc = (const void *)sec->content;
+	int i, n = sec->len / sizeof(*rsc), ret = 0;
+	struct device *dev = &rproc->dev;
+	bool boot_set = false;
+
+	for (i = 0; i < n && !ret; i++) {
+		switch (rsc[i].type) {
+		case RPRC_RSC_CARVEOUT:
+			if (!rproc_rprc_in_pool(rproc, rsc[i].pa, rsc[i].len)) {
+				dev_warn(dev, "carveout %.48s at pa 0x%llx len 0x%x lies outside the IPU pool; left unmapped\n",
+					rsc[i].name, rsc[i].pa, rsc[i].len);
+				break;
+			}
+			ret = rproc_rprc_add_mapping(rproc, &rsc[i],
+							RSC_CARVEOUT);
+			break;
+		case RPRC_RSC_DEVMEM:
+			if (pfn_valid(__phys_to_pfn(rsc[i].pa))) {
+				dev_err(dev, "devmem %.48s maps RAM at pa 0x%llx\n",
+						rsc[i].name, rsc[i].pa);
+				ret = -EINVAL;
+				break;
+			}
+			ret = rproc_rprc_add_mapping(rproc, &rsc[i],
+							RSC_DEVMEM);
+			break;
+		case RPRC_RSC_BOOTADDR:
+			if (!boot_set) {
+				rproc->bootaddr = rsc[i].da;
+				boot_set = true;
+			}
+			break;
+		default:
+			/* traces wait for the carveouts; the rest is unused */
+			break;
+		}
+	}
+
+	/* trace entries precede the carveouts in the table */
+	for (i = 0; i < n && !ret; i++)
+		if (rsc[i].type == RPRC_RSC_TRACE)
+			ret = rproc_rprc_add_trace(rproc, &rsc[i]);
+
+	return ret;
+}
+
+/* copy one section to its device address and read the placed bytes back */
+static int rproc_rprc_copy(struct rproc *rproc,
+				const struct rprc_section *sec)
 {
 	struct device *dev = &rproc->dev;
-	const char *name = rproc->firmware;
+	void __iomem *va;
+	phys_addr_t pa;
+	u32 i;
+
+	if (rproc_rprc_da_to_pa(rproc, sec->da, sec->len, &pa)) {
+		dev_err(dev, "section da 0x%llx len 0x%x lies outside every carveout\n",
+							sec->da, sec->len);
+		return -EINVAL;
+	}
+
+	va = ioremap_nocache(pa, sec->len);
+	if (!va) {
+		dev_err(dev, "can't map pa 0x%x len 0x%x\n", pa, sec->len);
+		return -ENOMEM;
+	}
+
+	memcpy((__force void *)va, sec->content, sec->len);
+
+	for (i = 0; i < sec->len; i++)
+		if (__raw_readb(va + i) != (u8)sec->content[i])
+			break;
+
+	iounmap(va);
+
+	if (i != sec->len) {
+		dev_err(dev, "section da 0x%llx reads back different at offset 0x%x\n",
+							sec->da, i);
+		return -EIO;
+	}
+
+	return 0;
+}
+
+/* process the resources of an RPRC image and place its sections */
+static int rproc_rprc_load(struct rproc *rproc, const struct firmware *fw)
+{
+	const struct rprc_header *hdr = (const void *)fw->data;
+	struct device *dev = &rproc->dev;
+	const struct rprc_section *sec;
+	int ret, placed = 0;
+	size_t left;
+
+	if (rproc_secure_get_mode(rproc)) {
+		dev_err(dev, "RPRC images do not support secure mode\n");
+		return -EINVAL;
+	}
+
+	if (!rproc->memory_pool) {
+		dev_err(dev, "RPRC images need a fixed carveout pool\n");
+		return -EINVAL;
+	}
+
+	sec = rproc_rprc_resources(rproc, fw, &left);
+	if (!sec)
+		return -EINVAL;
+
+	ret = rproc_rprc_handle_resources(rproc, sec);
+	if (ret) {
+		dev_err(dev, "Failed to process RPRC resources: %d\n", ret);
+		return ret;
+	}
+
+	rproc->fw_version = kstrndup(hdr->header, hdr->header_len, GFP_KERNEL);
+	if (!rproc->fw_version)
+		return -ENOMEM;
+
+	for (; sec && !ret; sec = rproc_rprc_next(rproc, sec, &left, &ret)) {
+		if (sec->type > RPRC_SECTION_DATA)
+			continue;
+		ret = rproc_rprc_copy(rproc, sec);
+		if (!ret)
+			placed++;
+	}
+
+	if (ret) {
+		kfree(rproc->fw_version);
+		rproc->fw_version = NULL;
+		return ret;
+	}
+
+	dev_info(dev, "RPRC image: %d sections placed and read back\n", placed);
+	return 0;
+}
+
+/*
+ * Register the two rpmsg vprocs of an RPRC image. Their buffers and vrings
+ * sit at fixed offsets from the pool base (RPROC_RPRC_IPC_MEM apart), which
+ * the image must cover with a carveout; the firmware learns each buffer
+ * base through the mailbox at boot.
+ */
+static int rproc_rprc_add_vdevs(struct rproc *rproc, const struct firmware *fw)
+{
+	struct rproc_mem_pool *pool = rproc->memory_pool;
+	u32 size = RPROC_RPRC_NUM_VDEVS * RPROC_RPRC_IPC_MEM;
+	struct device *dev = &rproc->dev;
+	struct rproc_vdev *rvdev, *tmp;
+	int i, j, ret = 0;
+
+	if (!pool) {
+		dev_err(dev, "RPRC images need a fixed carveout pool\n");
+		return -EINVAL;
+	}
+
+	if (!rproc_rprc_has_carveout(rproc, fw, pool->mem_base, size)) {
+		dev_err(dev, "RPRC image has no carveout at the pool base 0x%x for its rpmsg buffers\n",
+							pool->mem_base);
+		return -EINVAL;
+	}
+
+	rproc->rprc_ipc = ioremap_nocache(pool->mem_base, size);
+	if (!rproc->rprc_ipc)
+		return -ENOMEM;
+	rproc->rprc_ipc_pa = pool->mem_base;
+	rproc->rprc = true;
+
+	/*
+	 * The RPRC mailbox set ends at RP_MBOX_ABORT_REQUEST, without the
+	 * suspend request and acks, so the processor stays powered while it
+	 * runs.
+	 */
+	rproc->auto_suspend_timeout = -1;
+
+	rproc->num_rvdevs = 0;
+	for (i = 0; i < RPROC_RPRC_NUM_VDEVS; i++) {
+		rvdev = kzalloc(sizeof(*rvdev), GFP_KERNEL);
+		if (!rvdev) {
+			ret = -ENOMEM;
+			goto free_rvdevs;
+		}
+
+		rvdev->rproc = rproc;
+		rvdev->rprc_index = i;
+		rvdev->rprc_buf = rproc->rprc_ipc_pa + i * RPROC_RPRC_IPC_MEM;
+		rvdev->dfeatures = BIT(VIRTIO_RPMSG_F_NS);
+		for (j = 0; j < RVDEV_NUM_VRINGS; j++) {
+			rvdev->vring[j].len = RPROC_RPRC_NUM_BUFS / 2;
+			rvdev->vring[j].align = RPROC_RPRC_VRING_ALIGN;
+			rvdev->vring[j].rvdev = rvdev;
+		}
+
+		list_add_tail(&rvdev->node, &rproc->rvdevs);
+		rproc->num_rvdevs++;
+	}
+
+	list_for_each_entry_safe(rvdev, tmp, &rproc->rvdevs, node) {
+		ret = rproc_add_virtio_dev(rvdev, VIRTIO_ID_RPMSG);
+		if (ret)
+			break;
+	}
+
+	return ret;
+
+free_rvdevs:
+	list_for_each_entry_safe(rvdev, tmp, &rproc->rvdevs, node) {
+		list_del(&rvdev->node);
+		kfree(rvdev);
+	}
+	rproc->num_rvdevs = 0;
+	rproc->rprc = false;
+	iounmap(rproc->rprc_ipc);
+	rproc->rprc_ipc = NULL;
+	return ret;
+}
+
+/*
+ * take a firmware and boot a remote processor with it.
+ */
+/* process the resources of an ELF image and load its segments */
+static int rproc_elf_load(struct rproc *rproc, const struct firmware *fw)
+{
+	struct device *dev = &rproc->dev;
 	struct elf32_hdr *ehdr;
 	struct resource_table *table;
 	int ret, tablesz, versz;
 	const u8 *version;
-	int smode = rproc_secure_get_mode(rproc);
 
 	ret = rproc_fw_sanity_check(rproc, fw);
 	if (ret)
 		return ret;
 
 	ehdr = (struct elf32_hdr *)fw->data;
-
-	dev_info(dev, "Booting fw image %s, size %zd\n", name, fw->size);
 
 	/*
 	 * The ELF entry point is the rproc's boot addr (though this is not
@@ -1776,16 +2281,14 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 
 	/* look for the resource table */
 	table = rproc_find_rsc_table(rproc, fw->data, fw->size, &tablesz);
-	if (!table) {
-		ret = -EINVAL;
-		goto clean_up;
-	}
+	if (!table)
+		return -EINVAL;
 
 	/* handle fw resources which are required to boot rproc */
 	ret = rproc_handle_boot_rsc(rproc, table, tablesz);
 	if (ret) {
 		dev_err(dev, "Failed to process resources: %d\n", ret);
-		goto clean_up;
+		return ret;
 	}
 
 	/* look for the firmware version, and store if present */
@@ -1796,7 +2299,7 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 		if (ret) {
 			dev_err(dev, "Failed to process version info: %d\n",
 					ret);
-			goto clean_up;
+			return ret;
 		}
 	}
 
@@ -1813,6 +2316,35 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 		dev_err(dev, "Failed to parse secure sections: %d\n", ret);
 		goto free_version;
 	}
+
+	return 0;
+
+free_version:
+	kfree(rproc->fw_version);
+	rproc->fw_version = NULL;
+	return ret;
+}
+
+static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
+{
+	struct device *dev = &rproc->dev;
+	const char *name = rproc->firmware;
+	int ret;
+	int smode = rproc_secure_get_mode(rproc);
+
+	if (!fw) {
+		dev_err(dev, "failed to load %s\n", name);
+		return -EINVAL;
+	}
+
+	dev_info(dev, "Booting fw image %s, size %zd\n", name, fw->size);
+
+	if (rproc_is_rprc(fw))
+		ret = rproc_rprc_load(rproc, fw);
+	else
+		ret = rproc_elf_load(rproc, fw);
+	if (ret)
+		goto clean_up;
 
 	/*
 	 * if enabling an IOMMU isn't relevant for this rproc, this is
@@ -1891,6 +2423,11 @@ static void rproc_fw_config_virtio(const struct firmware *fw, void *context)
 	struct rproc *rproc = context;
 	struct resource_table *table;
 	int ret, tablesz;
+
+	if (rproc_is_rprc(fw)) {
+		rproc_rprc_add_vdevs(rproc, fw);
+		goto out;
+	}
 
 	if (rproc_fw_sanity_check(rproc, fw) < 0)
 		goto out;
@@ -2121,6 +2658,9 @@ void rproc_release(struct kref *kref)
 	dev_info(&rproc->dev, "removing %s\n", rproc->name);
 
 	rproc_delete_debug_dir(rproc);
+
+	if (rproc->rprc_ipc)
+		iounmap(rproc->rprc_ipc);
 
 	/*
 	 * At this point no one holds a reference to rproc anymore,

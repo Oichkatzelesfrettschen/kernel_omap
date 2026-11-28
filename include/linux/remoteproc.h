@@ -513,6 +513,10 @@ enum rproc_err {
  * @auto_suspend_timeout: store the auto suspend timeout for a rproc in msecs
  * @need resume: if true a resume is needed in the system resume callback
  * @system_suspended: true if a system suspend has happened
+ * @rprc: the firmware is an RPRC v2 image, which uses the fixed-layout rpmsg
+ *	  transport (rproc_rprc_add_vdevs())
+ * @rprc_ipc: kernel mapping of the RPRC rpmsg buffers and vrings
+ * @rprc_ipc_pa: physical base of the RPRC rpmsg buffers and vrings
  */
 struct rproc {
 	struct klist_node node;
@@ -550,6 +554,9 @@ struct rproc {
 	bool need_resume;
 	bool system_suspended;
 	char *fw_version;
+	bool rprc;
+	void __iomem *rprc_ipc;
+	phys_addr_t rprc_ipc_pa;
 };
 
 /* we currently support only two vrings per rvdev */
@@ -585,6 +592,8 @@ struct rproc_vring {
  * @vring: the vrings for this vdev
  * @dfeatures: virtio device features
  * @gfeatures: virtio guest features
+ * @rprc_index: position of this vdev in the RPRC fixed layout
+ * @rprc_buf: physical address of this vdev's RPRC rpmsg buffers
  */
 struct rproc_vdev {
 	struct list_head node;
@@ -593,6 +602,8 @@ struct rproc_vdev {
 	struct rproc_vring vring[RVDEV_NUM_VRINGS];
 	unsigned long dfeatures;
 	unsigned long gfeatures;
+	int rprc_index;
+	dma_addr_t rprc_buf;
 };
 
 struct rproc *rproc_get_by_name(const char *name);

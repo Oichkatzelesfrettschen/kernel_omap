@@ -34,6 +34,7 @@
 enum {
 	RPROC_VIRTIO_ALLOC_TYPE,
 	RPROC_VIRTIO_BUF_ADDR,
+	RPROC_VIRTIO_RPRC_INDEX,
 };
 
 /* kick the remote processor, and let it know which virtqueue to poke at */
@@ -252,10 +253,25 @@ static void rproc_virtio_get(struct virtio_device *vdev, unsigned int request,
 	case RPROC_VIRTIO_BUF_ADDR:
 		/* user data is at stake so bugs here cannot be tolerated */
 		BUG_ON(len != sizeof(addr));
-		presult = rproc_alloc_memory(rproc, SZ_256K, &dma, 2);
+		if (rproc->rprc) {
+			struct rproc_vdev *rvdev = vdev_to_rvdev(vdev);
+
+			/* the buffers open the vdev's slot of the fixed layout */
+			presult = (__force void *)rproc->rprc_ipc +
+				(rvdev->rprc_buf - rproc->rprc_ipc_pa);
+			dma = rvdev->rprc_buf;
+		} else {
+			presult = rproc_alloc_memory(rproc, SZ_256K, &dma, 2);
+		}
 		addr[0] = (unsigned int) presult;
 		addr[1] = dma;
 		memcpy(buf, addr, len);
+		break;
+	case RPROC_VIRTIO_RPRC_INDEX:
+		/* -1 unless the vdev belongs to an RPRC image */
+		BUG_ON(len != sizeof(iresult));
+		iresult = rproc->rprc ? vdev_to_rvdev(vdev)->rprc_index : -1;
+		memcpy(buf, &iresult, len);
 		break;
 	default:
 		dev_err(&vdev->dev, "invalid request: %d\n", request);
@@ -284,7 +300,9 @@ static void rproc_virtio_set(struct virtio_device *vdev, unsigned int request,
 		/* user data is at stake so bugs here cannot be tolerated */
 		BUG_ON(len != (sizeof(iresult) * 2));
 		presult = (void *)addr[0];
-		rproc_free_memory(rproc, SZ_256K, presult, addr[1]);
+		/* RPRC buffers live in the fixed mapping */
+		if (!rproc->rprc)
+			rproc_free_memory(rproc, SZ_256K, presult, addr[1]);
 		break;
 	default:
 		dev_err(&vdev->dev, "invalid request: %d\n", request);

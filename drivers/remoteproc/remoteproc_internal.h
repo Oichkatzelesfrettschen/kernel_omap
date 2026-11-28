@@ -21,6 +21,7 @@
 #define REMOTEPROC_INTERNAL_H
 
 #include <linux/irqreturn.h>
+#include <linux/virtio_ring.h>
 
 struct rproc;
 
@@ -67,4 +68,18 @@ void rproc_exit_debugfs(void);
 
 void rproc_free_vring(struct rproc_vring *rvring);
 int rproc_alloc_vring(struct rproc_vdev *rvdev, int i);
+
+/*
+ * RPRC v2 images expect each rpmsg vproc at a fixed offset from the IPU
+ * pool base, one vproc per Cortex-M3 core: 512 buffers of 512 bytes, then
+ * two vrings of 256 entries with 4 KiB alignment.
+ */
+#define RPROC_RPRC_NUM_VDEVS	2
+#define RPROC_RPRC_NUM_BUFS	512
+#define RPROC_RPRC_BUF_SIZE	512
+#define RPROC_RPRC_BUFS_SPACE	(RPROC_RPRC_NUM_BUFS * RPROC_RPRC_BUF_SIZE)
+#define RPROC_RPRC_VRING_ALIGN	4096
+#define RPROC_RPRC_RING_SIZE	PAGE_ALIGN(vring_size(RPROC_RPRC_NUM_BUFS / 2, \
+						     RPROC_RPRC_VRING_ALIGN))
+#define RPROC_RPRC_IPC_MEM	(RPROC_RPRC_BUFS_SPACE + 2 * RPROC_RPRC_RING_SIZE)
 #endif /* REMOTEPROC_INTERNAL_H */
